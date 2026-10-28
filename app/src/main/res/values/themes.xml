@@ -1,0 +1,20 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Programmatic screens use a fixed light palette, including dialogs. -->
+    <style name="Theme.JevProbe" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">#607C92</item>
+        <item name="colorSecondary">#607C92</item>
+        <item name="android:windowBackground">#F7F5F1</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+    <!-- This editor uses a fixed light palette; native controls must match it. -->
+    <style name="Theme.JevProbe.SnapshotReview" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">#607C92</item>
+        <item name="colorSecondary">#607C92</item>
+        <item name="android:windowBackground">#F7F5F1</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

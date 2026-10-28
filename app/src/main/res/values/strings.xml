@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">旁注</string>
+    <string name="a11y_desc_disguised">读取当前页面可见文字，用于整理记录和生成参考建议。发送消息始终由用户确认。</string>
+</resources>

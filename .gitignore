@@ -1,0 +1,16 @@
+.gradle/
+**/build/
+local.properties
+.env*
+*.apk
+*.jks
+*.keystore
+*.key
+*.db
+*.sqlite*
+*.log
+.sync-manifest.json
+__pycache__/
+*.pyc
+.idea/
+.vscode/
