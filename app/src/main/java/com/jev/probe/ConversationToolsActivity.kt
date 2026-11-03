@@ -51,7 +51,9 @@ class ConversationToolsActivity : Activity() {
     }
     private fun appName(app: String): String = when (app) {
         "com.tencent.mm" -> "微信"; "com.tantan.x" -> "牵手"; "cn.soulapp.android" -> "Soul"
-        "com.wepie.ivy" -> "青藤之恋"; else -> "其他 App"
+        "com.wepie.ivy" -> "青藤之恋"
+        com.jev.probe.capture.PupcallAdapter.PACKAGE -> "呼叫小狗"
+        else -> "其他 App"
     }
     private fun contacts() {
         val app = intent.getStringExtra("app").orEmpty()

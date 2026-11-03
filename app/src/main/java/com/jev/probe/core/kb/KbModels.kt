@@ -214,17 +214,19 @@ data class ChatContext(
     val notes: List<Note>,
     /** App-scoped accepted profile selected for this analysis. */
     val relationshipProfile: RelationshipProfile? = null,
-    val replyVoiceGuidance: String = ""
+    val replyVoiceGuidance: String = "",
+    val sceneGuidance: String = "",
+    val sceneDefaultRelationship: String? = null
 ) {
 
     /** User-authored per-person direction wins; an accepted profile precedes the global default. */
     fun effectiveRelationship(defaultRelationship: String): String =
         contact?.relationship?.trim()?.takeIf { it.isNotBlank() }
             ?: relationshipProfile?.relationshipStage?.text?.trim()?.take(300)?.takeIf { it.isNotBlank() }
-            ?: defaultRelationship
+            ?: sceneDefaultRelationship ?: defaultRelationship
 
     /** True when there is nothing extra to inject (then no field is sent at all). */
-    fun isEmpty(): Boolean = history.isEmpty() && notes.isEmpty() &&
+    fun isEmpty(): Boolean = sceneGuidance.isBlank() && history.isEmpty() && notes.isEmpty() &&
         (contact == null || (contact.relationship.isBlank() &&
             contact.notes.isBlank() && contact.autoSummary.isBlank() && relationshipProfile == null))
 
@@ -256,6 +258,7 @@ data class ChatContext(
         notes.forEach { n ->
             sb.append(n.title.trim()).append(": ").append(n.content.trim()).append('\n')
         }
+        if (sceneGuidance.isNotBlank()) sb.append("当前场景辅助：\n").append(sceneGuidance).append('\n')
         return sb.toString().trim()
     }
 }

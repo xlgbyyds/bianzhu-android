@@ -673,6 +673,11 @@ class KnowledgeActivity : AppCompatActivity() {
         box.addView(memoryRow)
         box.addView(text("从支持的聊天页保存联系人时会默认开启；只记录此后聊天页可见消息，时间不明会标为未知。可随时在此关闭。", 11f, sub))
         box.addView(label("备注")); box.addView(notesEdit)
+        if (existing != null && com.jev.probe.capture.PupcallAdapter.PACKAGE in existing.apps) {
+            box.addView(twoButtons("角色沟通偏好", {
+                startActivity(Intent(this, RoleChatActivity::class.java).putExtra("contactId", existing.id))
+            }, null, null))
+        }
 
         val dialog = AlertDialog.Builder(this)
             .setTitle(if (existing == null) "新建联系人" else "编辑联系人")
@@ -685,7 +690,8 @@ class KnowledgeActivity : AppCompatActivity() {
                 if (name.isBlank()) { toast("名字不能空"); return@setOnClickListener }
                 val requestedMemory = (memoryRow.tag as? Boolean) ?: false
                 val boundToApp = existing?.apps?.any {
-                    it == "com.tencent.mm" || it == "com.tantan.x" || it == "com.wepie.ivy" || it == "cn.soulapp.android"
+                    it == "com.tencent.mm" || it == "com.tantan.x" || it == "com.wepie.ivy" || it == "cn.soulapp.android" ||
+                        it == com.jev.probe.capture.PupcallAdapter.PACKAGE
                 } == true
                 val saved = store.saveContact(Contact(
                     id = existing?.id ?: KbStore.newId(),
@@ -704,7 +710,7 @@ class KnowledgeActivity : AppCompatActivity() {
                 ))
                 if (!saved) { toast("保存失败，请重试"); return@setOnClickListener }
                 toast(when {
-                    requestedMemory && !boundToApp -> "档案已保存；记忆仅支持从微信、牵手、Soul 或青藤之恋聊天页存档后开启"
+                    requestedMemory && !boundToApp -> "档案已保存；请先从支持的 App 聊天页存档后开启记忆"
                     requestedMemory -> "档案已保存；聊天记忆已开启"
                     else -> "档案已保存；聊天记忆未开启"
                 })
@@ -719,6 +725,7 @@ class KnowledgeActivity : AppCompatActivity() {
         "com.wepie.ivy" -> "青藤之恋"
         "cn.soulapp.android" -> "Soul"
         "cn.neoclub.uki" -> "Uki"
+        com.jev.probe.capture.PupcallAdapter.PACKAGE -> "呼叫小狗"
         "com.tencent.mobileqq" -> "QQ"
         "com.ss.android.lark" -> "飞书"
         "com.twitter.android" -> "X"

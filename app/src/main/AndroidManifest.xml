@@ -36,6 +36,8 @@
             android:name=".HistoryActivity"
             android:exported="false" />
 
+        <activity android:name=".RoleChatActivity" android:exported="false" />
+
         <activity
             android:name=".SnapshotReviewActivity"
             android:theme="@style/Theme.JevProbe.SnapshotReview"

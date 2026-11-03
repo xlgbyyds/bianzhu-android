@@ -85,12 +85,15 @@ data class VoiceTranscriptRect(val messageIndex: Int, val rect: Rect)
  * [note] is a caveat about how this snapshot was produced, shown verbatim in
  * the analysis panel (OCR captures cannot tell who said what).
  */
+data class RoleChatMetadata(val profileRole: String? = null, val profileAge: Int? = null)
+
 data class ChatSnapshot(
     val title: String?,
     val messages: List<Msg>,
     val bubbleRects: List<BubbleRect> = emptyList(),
     val note: String? = null,
-    val voiceTranscriptRects: List<VoiceTranscriptRect> = emptyList()
+    val voiceTranscriptRects: List<VoiceTranscriptRect> = emptyList(),
+    val roleChat: RoleChatMetadata? = null
 ) {
     val latestFrom: String? get() = messages.lastOrNull()?.side
 

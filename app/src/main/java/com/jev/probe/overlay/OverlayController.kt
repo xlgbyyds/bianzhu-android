@@ -194,6 +194,9 @@ class OverlayController(private val ctx: Context) {
     var onOpenConversation: (() -> Unit)? = null
     var onInviteConversation: (() -> Unit)? = null
     var onHideAssistant: (() -> Unit)? = null
+    var onRoleChat: (() -> Unit)? = null
+    private var roleChatAvailable = false
+    fun setRoleChatAvailable(available: Boolean) { roleChatAvailable = available }
 
     /** Review the exact transcript supplied to the current analysis request. */
     var onReviewSnapshot: (() -> Unit)? = null
@@ -528,6 +531,7 @@ class OverlayController(private val ctx: Context) {
         item("生成建议") { onManualAnalyze?.invoke() }
         item("截屏识别") { onOcrCapture?.invoke() }
         item("开场建议") { onOpenConversation?.invoke() }
+        if (roleChatAvailable) item("用语解读 / 相处偏好") { onRoleChat?.invoke() }
         item("邀约建议") { onInviteConversation?.invoke() }
         item("存入联系人") { onSaveContact?.invoke() }
         item("选择联系人") { onChooseContact?.invoke() }
@@ -1095,8 +1099,17 @@ class OverlayController(private val ctx: Context) {
         val btns = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         val actions = ArrayList<View>()
         actions.add(pill("复制", false) { copy(text) })
-        // Fill, then collapse so the input box + keyboard are visible to review/send.
-        actions.add(pill("填入", true) { android.util.Log.d("JEVASSIST", "overlay: fill tapped"); onFill(text); if (expanded) toggle() })
+        // The secure Flutter editor does not reliably accept accessibility writes.
+        // A copy action must copy the displayed card directly, without a fill callback.
+        val copyOnly = roleChatAvailable
+        actions.add(pill(if (copyOnly) "复制收起" else "填入", true) {
+            if (copyOnly) copy(text)
+            else {
+                android.util.Log.d("JEVASSIST", "overlay: fill tapped")
+                onFill(text)
+            }
+            if (expanded) toggle()
+        })
         actions.add(TextView(ctx).apply {
             this.text = "调整 ▾"; textSize = 13f; gravity = Gravity.CENTER
             setTextColor(Color.parseColor("#607C92"))

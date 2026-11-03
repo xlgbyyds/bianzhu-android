@@ -191,6 +191,8 @@ internal object SnapshotReviewCodec {
     fun encode(snapshot: ChatSnapshot): String = JSONObject()
         .put("title", snapshot.title)
         .put("note", snapshot.note)
+        .put("roleChat", snapshot.roleChat?.let { org.json.JSONObject()
+            .put("profileRole", it.profileRole).put("profileAge", it.profileAge) })
         .put("messages", JSONArray().apply {
             snapshot.messages.forEach { message ->
                 put(JSONObject()
@@ -216,7 +218,11 @@ internal object SnapshotReviewCodec {
                     row.optString("time").takeIf { it.isNotBlank() },
                     row.optString("confidence", "unknown"))
             },
-            note = json.optString("note").takeIf { it.isNotBlank() }
+            note = json.optString("note").takeIf { it.isNotBlank() },
+            roleChat = json.optJSONObject("roleChat")?.let {
+                com.jev.probe.core.RoleChatMetadata(it.optString("profileRole").takeIf(String::isNotBlank),
+                    it.optInt("profileAge", -1).takeIf { age -> age in 0..120 })
+            }
         )
     }.getOrNull()
 }

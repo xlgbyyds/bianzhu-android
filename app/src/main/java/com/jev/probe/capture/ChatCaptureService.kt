@@ -80,7 +80,7 @@ open class ChatCaptureService : AccessibilityService() {
     private val profileWorker = Executors.newSingleThreadExecutor()
 
     /** The personal build also tries the retained WeChat node adapter. */
-    private val adapters = listOf(WeChatAdapter(), SoulAdapter(), QianshouAdapter(), QingtengAdapter(), UkiAdapter(),
+    private val adapters = listOf(WeChatAdapter(), SoulAdapter(), QianshouAdapter(), QingtengAdapter(), PupcallAdapter(), UkiAdapter(),
         QQAdapter(), XAdapter(), FeishuAdapter())
         .associateBy { it.pkg }
 
@@ -577,6 +577,7 @@ open class ChatCaptureService : AccessibilityService() {
         "cn.soulapp.android" -> "Soul"
         "cn.neoclub.uki" -> "Uki"
         QingtengAdapter.PACKAGE -> "青藤之恋"
+        PupcallAdapter.PACKAGE -> "呼叫小狗"
         else -> "当前 App"
     } + "已识别为支持的 App，但聊天页结构暂时没读全。这不代表该 App 不支持；请保持聊天页停稳后重试。"
 
@@ -634,6 +635,22 @@ open class ChatCaptureService : AccessibilityService() {
         }
         registerSnapshotReviewReceiver()
         overlay?.onChooseContact = { openConversationTools("contacts") }
+        overlay?.onRoleChat = {
+            val root = rootInActiveWindow
+            val snapshot = root?.takeIf { it.packageName?.toString() == PupcallAdapter.PACKAGE }?.let(::snapshotFor)
+            if (snapshot == null || root == null) overlay?.showNotice("请打开呼叫小狗的单人聊天页后再解读用语。")
+            else {
+                val target = targetFor(root, snapshot)
+                val id = contactBinding.contactId(target) ?: KbStore.get(this).findContact(snapshot.title.orEmpty(), PupcallAdapter.PACKAGE)?.id
+                runCatching {
+                    startActivity(Intent(this, com.jev.probe.RoleChatActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .putExtra("contactId", id)
+                        .putExtra("snapshot", com.jev.probe.SnapshotReviewCodec.encode(snapshot.copy(
+                            messages = snapshot.messages.takeLast(6).map { it.copy(text = it.text.take(600)) }))))
+                }.onFailure { overlay?.showError("无法打开用语解读，请重试") }
+            }
+        }
         overlay?.onEditReplyVoice = { text -> openConversationTools("edit", text) }
         overlay?.onApproveReplyVoice = { text ->
             resolveVoiceScope()?.let { scope ->
@@ -701,7 +718,7 @@ open class ChatCaptureService : AccessibilityService() {
                     scopeReadRetry.reset("analyze")
                     ocrCaptureManual()
                 } else if (pkg == PKG_WECHAT || pkg == "com.tantan.x" || pkg == "cn.soulapp.android" ||
-                    pkg == "cn.neoclub.uki" || pkg == QingtengAdapter.PACKAGE) {
+                    pkg == "cn.neoclub.uki" || pkg == QingtengAdapter.PACKAGE || pkg == PupcallAdapter.PACKAGE) {
                     if (!retrySupportedScopeRead("analyze", pkg, root.windowId) {
                             overlay?.onManualAnalyze?.invoke()
                         }) {
@@ -1328,6 +1345,8 @@ open class ChatCaptureService : AccessibilityService() {
         // our own settings screens, the launcher, and the system UI.
         if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val fg = rootInActiveWindow?.packageName?.toString()
+            if (fg != null && fg != packageName && fg != "com.android.systemui")
+                overlay?.setRoleChatAvailable(fg == PupcallAdapter.PACKAGE)
             if (prefs.collapseOnAppSwitch && fg != null && fg != "com.android.systemui" && fg != session.target?.pkg)
                 overlay?.collapseForNavigation()
             if (toolsActivityActive && fg == packageName) {
@@ -1384,6 +1403,7 @@ open class ChatCaptureService : AccessibilityService() {
         }
         val root = rootInActiveWindow ?: run { leaveConversation(); overlay?.hide(); return }
         val pkg = root.packageName?.toString()
+        overlay?.setRoleChatAvailable(pkg == PupcallAdapter.PACKAGE)
         if (toolsActivityActive && pkg in setOf(packageName, toolsTarget?.pkg)) return
         val scrollWait = soulScrollSettlesAt - android.os.SystemClock.elapsedRealtime()
         if (pkg == SoulAdapter.PACKAGE && scrollWait > 0) {
@@ -1450,7 +1470,7 @@ open class ChatCaptureService : AccessibilityService() {
             // The bubble's explicit "截屏识别一次" remains available.
             if (prefs.ocrFallback && pkg != PKG_WECHAT &&
                 pkg != "cn.soulapp.android" && pkg != "com.tantan.x" &&
-                pkg != "cn.neoclub.uki" && pkg != QingtengAdapter.PACKAGE) {
+                pkg != "cn.neoclub.uki" && pkg != QingtengAdapter.PACKAGE && pkg != PupcallAdapter.PACKAGE) {
                 // Gate BEFORE the shot, not after the OCR. Feishu's tree is empty
                 // on every content-changed event, and a successful shot resets the
                 // failure backoff — so without this the caret blinking or an
@@ -1763,7 +1783,7 @@ open class ChatCaptureService : AccessibilityService() {
         val root = rootInActiveWindow
         val pkg = root?.packageName?.toString()
         val observedSnapshot = if (root != null && pkg in setOf(PKG_WECHAT, "com.tantan.x",
-                "cn.soulapp.android", "cn.neoclub.uki", QingtengAdapter.PACKAGE))
+                "cn.soulapp.android", "cn.neoclub.uki", QingtengAdapter.PACKAGE, PupcallAdapter.PACKAGE))
             snapshotFor(root) else null
         val target = root?.let { targetFor(it, observedSnapshot) }
         val reviewed = target?.let { candidate ->
@@ -2111,6 +2131,11 @@ open class ChatCaptureService : AccessibilityService() {
     private fun ocrCaptureManual() {
         val root = rootInActiveWindow
         val pkg = root?.packageName?.toString() ?: foregroundPkg ?: activePkg ?: ""
+        if (pkg == PupcallAdapter.PACKAGE) {
+            // Secure Flutter surface: use its readable semantics, never retry black screenshots.
+            overlay?.onManualAnalyze?.invoke()
+            return
+        }
         // Top bar text, if this app has one we can read; else the first OCR line.
         val title = root?.let {
             if (pkg == PKG_WECHAT)
@@ -2750,6 +2775,7 @@ open class ChatCaptureService : AccessibilityService() {
         overlay?.onHideAssistant = null
         overlay?.onReviewSnapshot = null
         overlay?.onChooseContact = null
+        overlay?.onRoleChat = null
         overlay?.onApproveReplyVoice = null
         overlay?.onEditReplyVoice = null
         toolsRequestId = null
@@ -2767,7 +2793,7 @@ open class ChatCaptureService : AccessibilityService() {
 
         private const val PKG_WECHAT = "com.tencent.mm"
         private val OPENING_CHAT_PACKAGES = setOf(
-            PKG_WECHAT, "com.tantan.x", "cn.soulapp.android", "cn.neoclub.uki", QingtengAdapter.PACKAGE
+            PKG_WECHAT, "com.tantan.x", "cn.soulapp.android", "cn.neoclub.uki", QingtengAdapter.PACKAGE, PupcallAdapter.PACKAGE
         )
         private val WECHAT_NON_CHAT_TITLES = setOf("微信", "通讯录", "发现", "我", "搜索")
 

@@ -380,6 +380,9 @@ class SettingsActivity : AppCompatActivity() {
         card2.addView(cardBtn("我的表达样本（查看、编辑、删除）") {
             startActivity(android.content.Intent(this, ConversationToolsActivity::class.java))
         })
+        card2.addView(cardBtn("角色沟通（呼叫小狗用语与偏好）") {
+            startActivity(android.content.Intent(this, RoleChatActivity::class.java))
+        })
         val kbResult = resultText()
         card2.addView(cardBtn("清空知识库与历史") {
             val c = KbStore.get(this).counts()

@@ -50,6 +50,23 @@ class CaptureEventTest {
 
     @After fun tearDown() { service.onDestroy() }
 
+    @Test fun roleMenuDoesNotLeakWhenSwitchingToAnUnadaptedApp() {
+        overlay.setRoleChatAvailable(true)
+        service.page = AccessibilityNodeInfo.obtain().apply { packageName = "com.example.game" }
+        event("com.example.game", AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+        val available = OverlayController::class.java.getDeclaredField("roleChatAvailable").apply { isAccessible = true }
+        assertFalse(available.getBoolean(overlay))
+        val adapter = object : ChatAppAdapter {
+            override val pkg = PupcallAdapter.PACKAGE
+            override fun extract(root: AccessibilityNodeInfo, res: Resources) =
+                ChatSnapshot("Alice", listOf(Msg("other", "你好")))
+        }
+        setField("adapters", mapOf(adapter.pkg to adapter))
+        service.page = AccessibilityNodeInfo.obtain().apply { packageName = adapter.pkg }
+        event(adapter.pkg, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+        assertTrue(available.getBoolean(overlay))
+    }
+
     @Test fun transientSystemWindowCannotEndBackfillFromAnyScheduledHandler() {
         val target = ConversationSession.Target("com.tencent.mm", 7, "Alice")
         val run = getField<BackfillSession>("backfill").start(target, "contact-a")!!

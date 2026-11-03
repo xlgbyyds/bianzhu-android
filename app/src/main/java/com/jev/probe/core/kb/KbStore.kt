@@ -117,6 +117,7 @@ class KbStore private constructor(context: Context) {
         runCatching { ConversationLedger.get(app).clearContact(id) }
         if (ok) com.jev.probe.core.ReplyVoiceStore(app).clearContact(id)
         if (ok) FileProfileCheckpoints.clearContact(app, id)
+        if (ok) com.jev.probe.core.RoleChatStore(app).reset(id)
         ok
     }
 
@@ -556,6 +557,7 @@ class KbStore private constructor(context: Context) {
         runCatching { root.deleteRecursively() }
         ConversationLedger.get(app).clearAll()
         com.jev.probe.core.ReplyVoiceStore(app).clearAll()
+        com.jev.probe.core.RoleChatStore(app).clear()
         Log.i(TAG, "kb cleared")
         Unit
     }
@@ -843,7 +845,7 @@ class KbStore private constructor(context: Context) {
         private const val TAG = "JEVASSIST"
         const val MAX_LOG = 300
         private val VISIBLE_MEMORY_APPS = setOf(
-            "com.tencent.mm", "com.tantan.x", "cn.soulapp.android", "com.wepie.ivy"
+            "com.tencent.mm", "com.tantan.x", "cn.soulapp.android", "com.wepie.ivy", "com.yixiangweilai.yuebaobao"
         )
 
         @Volatile private var instance: KbStore? = null

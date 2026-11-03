@@ -70,6 +70,45 @@ class AppearanceBehaviourTest {
         assertTrue(field<TextView>("bubble").translationX > 0)
     }
 
+    @Test fun roleChatMenuIsScopedAndDoesNotReplaceExistingActions() {
+        var opened = 0
+        overlay.onRoleChat = { opened++ }
+        overlay.setRoleChatAvailable(true)
+        showMenu()
+        val items = descendants(field("menuView")).filterIsInstance<TextView>()
+        assertTrue(items.any { it.text == "生成建议" })
+        assertTrue(items.any { it.text == "隐藏旁注" })
+        items.single { it.text == "用语解读 / 相处偏好" }.performClick()
+        assertEquals(1, opened)
+        overlay.setRoleChatAvailable(false)
+        showMenu()
+        assertFalse(descendants(field("menuView")).filterIsInstance<TextView>()
+            .any { it.text == "用语解读 / 相处偏好" })
+    }
+
+    @Test fun secureFlutterUsesCopyCollapseWhileOtherAppsRetainFill() {
+        val clipboard = activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("old", "上一条内容"))
+        var filled: String? = null
+        overlay.setRoleChatAvailable(true)
+        overlay.showOpeners(listOf(ReplySuggestion("自然接话", "natural", ""))) { filled = it }
+        var labels = descendants(field("root")).filterIsInstance<TextView>().map { it.text.toString() }
+        assertTrue("复制收起" in labels)
+        assertFalse("填入" in labels)
+        descendants(field("root")).filterIsInstance<TextView>().single { it.text == "复制收起" }.performClick()
+        assertEquals("自然接话", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
+        assertNull(filled)
+        assertEquals(View.GONE, field<View>("panel").visibility)
+        overlay.setRoleChatAvailable(false)
+        overlay.showOpeners(listOf(ReplySuggestion("普通会话", "natural", ""))) { filled = it }
+        labels = descendants(field("root")).filterIsInstance<TextView>().map { it.text.toString() }
+        assertTrue("填入" in labels)
+        assertFalse("复制收起" in labels)
+        descendants(field("root")).filterIsInstance<TextView>().single { it.text == "填入" }.performClick()
+        assertEquals("普通会话", filled)
+        assertEquals("自然接话", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
+    }
+
     @Test @Config(qualifiers = "w834dp-h375dp-land-520dpi")
     fun landscapeMenuKeepsHideVisibleAndRemainingActionsScrollable() {
         assertMenuFitsAndHides()
