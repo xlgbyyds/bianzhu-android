@@ -8,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.jev.probe.core.Prefs
 import com.jev.probe.core.ReplySuggestion
@@ -67,6 +68,71 @@ class AppearanceBehaviourTest {
         assertEquals(1, invitations)
         assertNull(field<View?>("menuView"))
         assertTrue(field<TextView>("bubble").translationX > 0)
+    }
+
+    @Test @Config(qualifiers = "w834dp-h375dp-land-520dpi")
+    fun landscapeMenuKeepsHideVisibleAndRemainingActionsScrollable() {
+        assertMenuFitsAndHides()
+    }
+
+    @Test @Config(qualifiers = "w834dp-h320dp-land-520dpi")
+    fun shortLandscapeWithLargeFontKeepsHideVisibleAndRemainingActionsScrollable() {
+        val config = android.content.res.Configuration(activity.resources.configuration).apply { fontScale = 1.4f }
+        @Suppress("DEPRECATION")
+        activity.resources.updateConfiguration(config, activity.resources.displayMetrics)
+        assertMenuFitsAndHides()
+    }
+
+    private fun assertMenuFitsAndHides() {
+        val dm = activity.resources.displayMetrics
+        val params = field<WindowManager.LayoutParams>("lp")
+        params.x = dm.widthPixels - (60 * dm.density).toInt()
+        params.y = dm.heightPixels + 500 // stale portrait position on a landscape game
+        showMenu()
+        shadowOf(Looper.getMainLooper()).idle()
+        val root = field<FrameLayout>("root")
+        fun layout() {
+            root.measure(View.MeasureSpec.makeMeasureSpec(dm.widthPixels, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(dm.heightPixels, View.MeasureSpec.AT_MOST))
+            root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+        }
+        layout()
+        val menu = field<ViewGroup>("menuView")
+        val hide = descendants(menu).filterIsInstance<TextView>().single { it.text == "隐藏旁注" }
+        val scroll = descendants(menu).filterIsInstance<ScrollView>().single()
+        assertTrue(params.y + root.measuredHeight <= dm.heightPixels)
+        assertTrue(params.x + root.measuredWidth <= dm.widthPixels)
+        assertTrue(hide.height > 0 && scroll.height > 0)
+        assertTrue(scroll.getChildAt(0).height > scroll.height)
+        assertTrue(menu.getChildAt(0) === hide)
+        scroll.scrollTo(0, scroll.getChildAt(0).height)
+        val cancel = descendants(menu).filterIsInstance<TextView>().single { it.text == "取消" }
+        val visible = android.graphics.Rect()
+        assertTrue("cancel=${cancel.top}..${cancel.bottom}, scrollY=${scroll.scrollY}, " +
+            "viewport=${scroll.height}, content=${scroll.getChildAt(0).height}, root=${root.height}, menu=${menu.height}",
+            cancel.getLocalVisibleRect(visible))
+        assertEquals(cancel.height, visible.height())
+        assertTrue(hide.getLocalVisibleRect(visible))
+        assertEquals(hide.height, visible.height())
+        var hidden = 0
+        overlay.onHideAssistant = { hidden++ }
+        hide.performClick()
+        assertEquals(1, hidden)
+        assertTrue(prefs.overlayHidden)
+        overlay.showIdle(null)
+        overlay.setHiddenForShot(false)
+        assertFalse(overlay.isShowing())
+    }
+
+    @Test fun displayChangeDismissesMenuAndClampsTheBubbleWithoutHidingIt() {
+        val params = field<WindowManager.LayoutParams>("lp")
+        params.y = activity.resources.displayMetrics.heightPixels + 500
+        showMenu()
+        overlay.onDisplayConfigurationChanged()
+        assertNull(field<View?>("menuView"))
+        assertTrue(overlay.isShowing())
+        assertTrue(params.y + 52 * activity.resources.displayMetrics.density <= activity.resources.displayMetrics.heightPixels)
+        assertFalse(prefs.overlayHidden)
     }
 
     @Test fun draggingExpandedPanelNeverDocksItBeyondTheRightScreenEdge() {

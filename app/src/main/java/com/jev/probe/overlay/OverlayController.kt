@@ -140,6 +140,7 @@ class OverlayController(private val ctx: Context) {
         if (expanded || menuView != null) return
         val params = lp ?: return
         if (prefs.edgePeek) params.x = if (params.x < screenW / 2) dp(8) else (screenW - dp(60)).coerceAtLeast(dp(8))
+        params.y = params.y.coerceIn(dp(24), (screenH - dp(120)).coerceAtLeast(dp(24)))
         updateBubbleAppearance()
         root?.let { runCatching { wm.updateViewLayout(it, params) } }
     }
@@ -153,6 +154,15 @@ class OverlayController(private val ctx: Context) {
     fun collapseForNavigation() {
         dismissMenu()
         if (expanded) toggle()
+    }
+
+    fun onDisplayConfigurationChanged() {
+        // A portrait position/height may be outside the display after entering a game.
+        collapseForNavigation()
+        (contentBox?.parent as? ScrollView)?.let { scroll ->
+            scroll.layoutParams = scroll.layoutParams.apply { height = (screenH * 0.40f).roundToInt() }
+        }
+        dockBubble()
     }
 
     var onChooseContact: (() -> Unit)? = null
@@ -484,16 +494,36 @@ class OverlayController(private val ctx: Context) {
         val params = lp ?: return
         menuX = params.x; menuY = params.y
         params.x = if (params.x < screenW / 2) dp(8) else (screenW - dp(204)).coerceAtLeast(dp(8))
-        params.y = params.y.coerceAtMost((screenH - dp(540)).coerceAtLeast(dp(24)))
-        val menu = LinearLayout(ctx).apply {
+        params.y = params.y.coerceIn(dp(8), (screenH * 0.14f).roundToInt().coerceAtLeast(dp(8)))
+        val menu = object : LinearLayout(ctx) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val available = (screenH - params.y - dp(56) - dp(24)).coerceAtLeast(dp(48))
+                val limit = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED) available
+                    else minOf(available, MeasureSpec.getSize(heightMeasureSpec))
+                super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(limit, MeasureSpec.AT_MOST))
+            }
+        }.apply {
             orientation = LinearLayout.VERTICAL
             background = card(12, panelBg(), stroke = true)
             elevation = dp(8).toFloat()
             setPadding(dp(4), dp(4), dp(4), dp(4))
             layoutParams = FrameLayout.LayoutParams(dp(196), ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(56) }
         }
+        // Always reachable, including in short landscape windows and with large fonts.
+        menu.addView(menuItem("隐藏旁注") { dismissMenu(); hideForUser() }.apply {
+            minHeight = dp(48)
+            setTextColor(Color.parseColor("#B54752"))
+            background = RippleDrawable(ColorStateList.valueOf(Color.parseColor("#35B54752")),
+                card(10, Color.parseColor("#FFF0F1")), card(10, Color.WHITE))
+        })
+        val actions = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        menu.addView(ScrollView(ctx).apply {
+            isFillViewport = false
+            isVerticalScrollBarEnabled = true
+            addView(actions)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         fun item(label: String, action: () -> Unit) {
-            menu.addView(menuItem(label) { dismissMenu(); action() })
+            actions.addView(menuItem(label) { dismissMenu(); action() })
         }
         item("生成建议") { onManualAnalyze?.invoke() }
         item("截屏识别") { onOcrCapture?.invoke() }
@@ -503,7 +533,6 @@ class OverlayController(private val ctx: Context) {
         item("选择联系人") { onChooseContact?.invoke() }
         item(if (backfillActive) "结束补录" else "补录记录") { onToggleHistoryCapture?.invoke() }
         item("设置") { openSettings() }
-        item("隐藏旁注") { hideForUser() }
         item("取消") { }
         menuView = menu
         root?.addView(menu)

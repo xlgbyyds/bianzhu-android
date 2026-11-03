@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.Rect
@@ -63,6 +64,11 @@ import java.util.UUID
  * "填入"; the user still presses send.
  */
 open class ChatCaptureService : AccessibilityService() {
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        overlay?.onDisplayConfigurationChanged()
+    }
 
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newFixedThreadPool(2)

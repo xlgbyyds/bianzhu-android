@@ -1,7 +1,7 @@
 # 旁注 Android
 
 基于 [jev-chat/jev-chat-jarvis](https://github.com/jev-chat/jev-chat-jarvis) 的个人维护版。
-当前源码版本：`1.4-personal.96`。保留原项目 LICENSE、NOTICE 及第三方许可。
+当前源码版本：`1.4-personal.97`。保留原项目 LICENSE、NOTICE 及第三方许可。
 
 支持聊天页可见文字识别、微信 OCR、语音转写归属核对、联系人本地记忆、旧消息补录、
 关系档案、回复建议、开场与邀约建议。消息由用户确认后发送，软件不自动发送。
