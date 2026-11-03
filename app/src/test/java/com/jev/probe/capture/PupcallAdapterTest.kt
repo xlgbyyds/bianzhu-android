@@ -88,6 +88,18 @@ class PupcallAdapterTest {
         assertEquals(listOf(MessageKind.TEXT, MessageKind.MEDIA_UNKNOWN, MessageKind.VOICE_UNKNOWN), messages.map { it.kind })
         assertEquals("other", messages.last().side)
     }
+    @Test fun imageClassWithReadableSemanticsIsTextButMediaAndVoiceLabelsStayUnknown() {
+        val root = chat()
+        add(root, row("other", "刚忙完 你呢[坏笑]", .36, image = true))
+        add(root, row("me", "准备出门走走", .48, image = true))
+        add(root, row("other", "[图片]", .60, image = true))
+        add(root, row("other", "语音 12秒", .72, image = true))
+        val messages = adapter.extract(root, res)!!.messages
+        assertEquals(listOf(MessageKind.TEXT, MessageKind.TEXT, MessageKind.MEDIA_UNKNOWN,
+            MessageKind.VOICE_UNKNOWN), messages.map { it.kind })
+        assertEquals(listOf("刚忙完 你呢[坏笑]", "准备出门走走", "", ""), messages.map { it.text })
+        assertEquals(listOf("other", "me", "other", "other"), messages.map { it.side })
+    }
     @Test fun clippedMessageIsNotRecordedAsComplete() {
         val root = chat()
         add(root, row("other", "完整文字", .4))

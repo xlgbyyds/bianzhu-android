@@ -61,8 +61,12 @@ class PupcallAdapter : ChatAppAdapter {
             val sides = avatars.map { if (it.centerX() < width / 2) "other" else "me" }.distinct()
             val text = label(body)
             val kind = when {
-                body.className?.toString() == "android.widget.ImageView" -> MessageKind.MEDIA_UNKNOWN
                 VOICE.matches(text) -> MessageKind.VOICE_UNKNOWN
+                // Flutter marks mixed text/emoji bubbles as ImageView too. The
+                // actual semantic text is still readable; a class name alone
+                // must not turn a readable new reply into unknown media.
+                body.className?.toString() == "android.widget.ImageView" &&
+                    (text.isBlank() || MEDIA_LABEL.matches(text)) -> MessageKind.MEDIA_UNKNOWN
                 else -> MessageKind.TEXT
             }
             val time = markers.lastOrNull { it.first <= rb.top }?.second
@@ -94,5 +98,6 @@ class PupcallAdapter : ChatAppAdapter {
         private val PROFILE = Regex("属性\\s+([^\\n·]+)\\s*·\\s*(\\d{1,3})岁")
         private val STATUS = Regex("(?:在线|刚刚(?:在线|活跃)|离线|.*(?:分钟前|小时前|天前)(?:活跃|在线)|.*正在输入.*)")
         private val VOICE = Regex("(?:语音\\s*)?\\d{1,3}\\s*(?:秒|[\"″])")
+        private val MEDIA_LABEL = Regex("(?:\\[?(?:图片|照片|表情|表情包|动图|视频)\\]?|image|photo|video|sticker)", RegexOption.IGNORE_CASE)
     }
 }
