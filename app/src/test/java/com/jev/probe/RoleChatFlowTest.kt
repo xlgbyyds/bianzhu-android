@@ -104,6 +104,39 @@ class RoleChatFlowTest {
         assertEquals(shot.roleChat, decoded.roleChat)
         assertEquals(shot.roleChat, decoded.copy(messages = listOf(Msg("me", "修正归属"))).roleChat)
     }
+    @Test fun roleReplyAndOpenerUseSystemDirectionWhileOrdinaryAppsAndOptOutKeepOriginalTask() {
+        val prefs = Prefs(context, "role-writing-flow")
+        store.save(RoleChatPreference(myRole = "偏照顾与引导", tone = "轻松调侃"))
+        val roleShot = shot.copy(messages = listOf(Msg("other", "爸爸喵喵喵")))
+        var calls = 0
+        for (app in listOf(PupcallAdapter.PACKAGE, "com.tencent.mm", "com.tantan.x", "cn.soulapp.android")) {
+            val ctx = ContextBuilder.build(context, roleShot, app, prefs)
+            for (opener in listOf(false, true)) {
+                val client = ReplyClient(prefs) { _, _, body ->
+                    calls++
+                    val messages = body.getJSONArray("messages")
+                    val sys = messages.getJSONObject(0).getString("content")
+                    val user = messages.getJSONObject(1).getString("content")
+                    val scoped = app == PupcallAdapter.PACKAGE
+                    assertEquals(scoped, sys.contains("【呼叫小狗本轮写法】"))
+                    if (opener) assertEquals(!scoped, user.contains("fresh_opening 必须换到轻松的新话题"))
+                    val styles = if (opener) listOf("fresh_opening", "light_callback", "playful")
+                        else listOf("natural", "follow_detail", "playful")
+                    val replies = org.json.JSONArray()
+                    styles.forEachIndexed { i, style -> replies.put(JSONObject().put("style", style).put("text", listOf("轻松接话", "温柔回应", "自然聊聊")[i])) }
+                    JSONObject().put("choices", org.json.JSONArray().put(JSONObject().put("message",
+                        JSONObject().put("content", JSONObject().put("replies", replies).toString()))))
+                }
+                val result = if (opener) client.openers(roleShot, ctx.effectiveRelationship("普通认识"), ctx)
+                    else client.draft(roleShot, ctx.effectiveRelationship("普通认识"), ctx)
+                assertEquals(3, result.size)
+            }
+        }
+        assertEquals(8, calls)
+        store.save(RoleChatPreference(enabled = false))
+        val disabled = ContextBuilder.build(context, roleShot, PupcallAdapter.PACKAGE, prefs)
+        assertEquals("", RoleChatGuide.replyInstruction(roleShot, disabled.sceneGuidance, false))
+    }
     @Test fun localExplanationOpensWithoutModelsAndContactDeletionRemovesItsPreference() {
         val kb = KbStore.get(context)
         kb.saveContact(Contact("role-a", shot.title!!, apps = listOf(PupcallAdapter.PACKAGE)))
