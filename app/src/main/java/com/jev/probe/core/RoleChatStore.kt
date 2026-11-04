@@ -37,7 +37,10 @@ class RoleChatStore(context: Context) {
     fun clear(): Boolean = prefs.edit().clear().commit()
     private fun key(contactId: String?) = if (contactId == null) "pupcall.defaults" else "pupcall.contact.$contactId"
     companion object {
-        val MY_ROLES = listOf("未确定", "偏照顾与引导", "偏接受引导", "可以切换")
-        val TONES = listOf("自然认识", "轻松调侃", "温柔亲近")
+        const val FIRM_ROLE = "明确主导"
+        const val RECIPROCAL_ROLE = "互相带节奏"
+        const val DIRECT_TONE = "直球调侃"
+        val MY_ROLES = listOf("未确定", "偏照顾与引导", FIRM_ROLE, RECIPROCAL_ROLE, "偏接受引导", "可以切换")
+        val TONES = listOf("自然认识", "轻松调侃", "温柔亲近", DIRECT_TONE)
     }
 }

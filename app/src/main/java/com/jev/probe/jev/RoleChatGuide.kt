@@ -2,6 +2,7 @@ package com.jev.probe.jev
 
 import com.jev.probe.core.ChatSnapshot
 import com.jev.probe.core.RoleChatPreference
+import com.jev.probe.core.RoleChatStore
 
 /** Small, original explanations distilled from the cited glossaries. No network or model call. */
 object RoleChatGuide {
@@ -59,6 +60,12 @@ object RoleChatGuide {
             append("场景：偏主人与小狗、Daddy与Mommy等角色称呼、依赖感和亲密陪伴的社交；角色语言可能只是当下玩笑，不等于长期身份。\n")
             append("判断与排序：对方主动递来撒娇或角色玩笑时，优先温柔接住再轻逗的候选；不能只因为尚未确立关系，就把所有角色感回复排在普通问候之后。真难过、拒绝和普通生活话题仍以当前原话为准。\n")
             append("用户明确偏好：").append(preference.myRole).append("；语气：").append(preference.tone).append("。\n")
+            if (preference.tone == RoleChatStore.DIRECT_TONE)
+                append("用户选择直球调侃：判断与排序优先具体接话、直接表达兴趣、有来有往的轻逗；目标是认识现实中合拍的人。对方表达直接时自然说明态度，不装听不懂，也不把全平台的人都假定为相同偏好。\n")
+            if (preference.myRole == RoleChatStore.RECIPROCAL_ROLE)
+                append("相处方式是互相带节奏：可以主动，也能接对方的玩笑，不预设用户必须服从或对方必须接受引导；不据此推定任何成人角色身份。\n")
+            if (preference.myRole == RoleChatStore.FIRM_ROLE)
+                append("用户选择明确主导：开场、接话和邀约都主动带话题、清楚表达兴趣并提出具体建议；优先短句、平视、有分寸的轻逗。不因对方称自己Mommy或主人，就把用户写成求夸、求认领或承诺服从的一方；也不强行把对方认定为接受引导者。\n")
             append("用户确认的对方偏好：").append(preference.otherRole).append("；未经确认不能由标签自动赋予角色。\n")
             if (preference.boundaries.isNotBlank()) append("用户填写的表达边界：").append(preference.boundaries).append('\n')
             observations(snapshot).forEach { append(it).append('\n') }
@@ -79,16 +86,18 @@ object RoleChatGuide {
         if (snapshot.roleChat == null || !sceneGuidance.startsWith(SCENE_PREFIX) ||
             (snapshot.roleChat.profileAge ?: 18) < 18 ||
             ReplyTurnPolicy.mode(snapshot) != ReplyTurnPolicy.Mode.ORDINARY) return ""
-        val latest = snapshot.messages.lastOrNull { it.side == "other" } ?: return ""
+        val voice = voiceInstruction(snapshot, sceneGuidance)
+        val latest = snapshot.messages.lastOrNull { it.side == "other" }
+            ?: return if (opener) voice else ""
         if (latest.kind !in setOf(com.jev.probe.core.MessageKind.TEXT, com.jev.probe.core.MessageKind.VOICE_TRANSCRIPT)) return ""
         val text = latest.text
-        if (Regex("别叫我|不要叫我|别这样|不喜欢这样|不想玩|停止|先别玩").containsMatchIn(text)) return ""
+        if (Regex("别叫我|不要叫我|别这样|不喜欢这样|不想玩|停止|先别玩|别命令|不要命令|不喜欢被管").containsMatchIn(text)) return ""
         if (Regex("我家.*(?:小狗|猫)|(?:小狗|猫).{0,8}(?:疫苗|生病|看病|驱虫)|别人叫我|朋友叫我").containsMatchIn(text)) return ""
         val cue = when {
             Regex("做我的小狗|我的小狗|嫲嫲来了|妈妈来了|mommy来了|daddy来了|我来照顾你", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "leads"
             Regex("brat|不听话|调皮|犯贱|惩罚", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "playful"
             Regex("主人|主银|小狗|puppy|daddy|mommy|爸爸(?:喵|抱|在吗|摸)|(?:喊|叫|找个|求个)爸爸|嫲嫲|摸头|摸摸|揉脑袋|抱抱|乖", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "care"
-            else -> return ""
+            else -> return voice
         }
         return buildString {
             append("【呼叫小狗本轮写法】对方这轮在发角色式招呼或撒娇玩笑，按当前原话接话，不套普通微信问候和兴趣调查。")
@@ -98,13 +107,53 @@ object RoleChatGuide {
             append("避免你平时喜欢聊什么、先认识一下、这个称呼我先应一声、听着像征友启事、不过先别急着等旁观解释或刻意刹车。")
             append("没有角色含义的普通话题正常聊；真难过、拒绝和表达纠正优先，不能硬玩角色。只做非露骨的角色感接话，不写性行为、羞辱威胁或危险操作。")
             append(when (cue) {
-                "leads" -> "本句对方偏引导或照顾：先接她递来的玩法，不能只凭标签把她反过来当小狗。用户偏主导时可轻逗回应，不替用户承诺服从。写法对照：她说嫲嫲来了 还不快打招呼，可接出场还挺有气势 我先看看你怎么照顾人。"
+                "leads" -> "本句对方偏引导或照顾：先接她递来的玩法，不能只凭标签把她反过来当小狗。用户偏主导时可轻逗回应，不替用户承诺服从。" +
+                    if (voice.contains("【明确主导写法】")) "写法对照：她说嫲嫲来了 还不快打招呼，可接招呼打了 不过我更习惯照顾人。"
+                    else if (voice.contains("【直球调侃写法】")) "本轮可互相斗嘴、接她的玩笑再带出自己的话题；不把一次接梗写成长期服从，也不为了抢主导硬压对方。"
+                    else "写法对照：她说嫲嫲来了 还不快打招呼，可接出场还挺有气势 我先看看你怎么照顾人。"
                 "playful" -> "本句偏顽皮试探：温柔接住再轻逗，不升级成训诫或处罚。写法对照：她问会喜欢brat吗，可接有点小脾气挺可爱 别把自己气着就行。"
                 else -> "本句偏撒娇或寻求照顾：用有回应感的短句接住，可顺势轻逗，不复述求陪伴宣言。写法对照：她说爸爸喵喵喵，可接听见了 小猫怎么这么会撒娇；她说求揉揉脑袋，可接给你揉揉 头发乱了可别赖我；她说乖小狗找主人，只要陪伴和真心，可接先聊两句 看看是乖的还是装乖的。"
             })
             append("示例只示范回应方式，不能照抄同一句，不把摸头等虚拟表达说成现实里已经发生，不从其他人的示例搬称呼或事实。")
             if (opener) append("本轮开场：当前角色招呼尚未得到回应时，fresh_opening 也先用新句子接这个招呼，light_callback 轻回扣已有角色玩笑，playful 轻逗；不强制跳到工作、兴趣、吃饭或普通晚安。若旧话题已结束或隔了较久，轻角色重启，不假定她此刻仍在同一状态。")
             append("三条是独立备选，分别偏温柔承接、轻逗、自然带话题，不要三条换词重复同一个套路；不超过一条问句，沿用本轮指定 style。")
+            append(voice)
+        }
+    }
+
+    /** Opt-in voice only; current feedback and refusal override the stored preference. */
+    private fun voiceInstruction(snapshot: ChatSnapshot, sceneGuidance: String): String {
+        if (snapshot.roleChat == null || (snapshot.roleChat.profileAge ?: 18) < 18 ||
+            !sceneGuidance.startsWith(SCENE_PREFIX) ||
+            ReplyTurnPolicy.mode(snapshot) != ReplyTurnPolicy.Mode.ORDINARY) return ""
+        val preference = sceneGuidance.lineSequence().firstOrNull { it.startsWith("用户明确偏好：") }.orEmpty()
+        val firm = preference.startsWith("用户明确偏好：${RoleChatStore.FIRM_ROLE}；")
+        val direct = preference.substringAfter("；语气：", "").removeSuffix("。") == RoleChatStore.DIRECT_TONE
+        if (!firm && !direct) return ""
+        val text = snapshot.messages.lastOrNull { it.side == "other" }?.text.orEmpty()
+        if (Regex("别叫我|不要叫我|别这样|不喜欢这样|不想玩|停止|先别玩|别命令|不要命令|不喜欢被管").containsMatchIn(text)) return ""
+        val firmVoice = if (firm) "【明确主导写法】用用户本人的主导视角写：主动开启具体话题、表达想法和给出提议，不只附和或把决定全丢给对方。" +
+            "可以短句直接、轻逗、有照顾感，不用凶狠、贬低、查岗或霸总台词充当主导。" +
+            "对方叫自己Mommy或主人也不自动改变用户偏好，不写我乖不乖、求收留、听你安排等讨好服从台词；角色不合可自然说明自己的偏好，不能强迫她换角色。" +
+            "普通生活话题仍具体回应，不硬塞角色称呼。没接上的玩笑不重复，拒绝或不适优先。" +
+            "加微信和线下见面是不同目标，不能把答应加微信当答应见面；不能编微信号、地点或已经约好。" else ""
+        if (!direct) return firmVoice
+        return firmVoice + "【直球调侃写法】先接眼前具体内容，再短句直接表达兴趣或轻轻斗嘴；敢说想认识她、想继续聊，不绕成分析报告或不停问兴趣。" +
+            "开场用一个容易接住的切口；回复有来有往，已热络时可直接表达好感；邀约按Jev决定清楚提出具体安排。" +
+            "她表达直接时自然说明自己的态度，不装听不懂；隐私问题不编个人经历、次数、身体或过去细节，不写露骨性描写。" +
+            "对方主动带话题也能接，不必争输赢；不从称呼推定服从、承诺或实际见面意愿。" +
+            "加微信与见面分开推进，一次一个目标，不把普通接话全变成索要微信；具体拒绝或不适优先，没接上的玩笑不反复用。"
+    }
+
+    fun invitationInstruction(snapshot: ChatSnapshot, sceneGuidance: String, action: InvitationAction): String {
+        val voice = voiceInstruction(snapshot, sceneGuidance)
+        if (voice.isEmpty()) return ""
+        // Stopping/clarifying decisions must not be weakened by a more assertive voice.
+        return when (action) {
+            InvitationAction.WAIT, InvitationAction.STOP -> "【呼叫小狗邀约写法】本轮按${action.name}执行 不加入主导玩笑 不追加见面或加微信请求。"
+            InvitationAction.CLARIFY -> "【呼叫小狗邀约写法】本轮只问清Jev选出的一个实际条件 不附带见面或加微信要求。"
+            InvitationAction.CONFIRM -> voice + "【呼叫小狗邀约写法】本轮只落实已答应见面的未定细节 不突然改成索要微信 不重复说服。"
+            else -> voice + "【呼叫小狗邀约写法】按Jev本轮决定提出一个具体可调整的活动建议 由我先表达想法 再给她选择空间 不把问句改成命令。一次只推进一个目标 不捆绑加微信与见面。"
         }
     }
 }

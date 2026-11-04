@@ -154,4 +154,74 @@ class RoleChatFlowTest {
         kb.deleteContact("role-a")
         assertEquals("未确认", store.load("role-a").otherRole)
     }
+
+    @Test fun firmPreferenceSurvivesReloadAndIsScopedAcrossReplyOpenerAndInvitation() {
+        assertPreferenceAcrossRoutes(RoleChatPreference(myRole = RoleChatStore.FIRM_ROLE), "【明确主导写法】")
+    }
+
+    @Test fun reciprocalDirectPreferenceSurvivesReloadAndIsScopedAcrossAllThreeRoutes() {
+        assertPreferenceAcrossRoutes(RoleChatPreference(myRole = RoleChatStore.RECIPROCAL_ROLE,
+            tone = RoleChatStore.DIRECT_TONE), "【直球调侃写法】")
+    }
+
+    @Test fun emptyPageOpenerFiltersInventedSharedPastWithoutAnotherRequest() {
+        val prefs = Prefs(context, "empty-opener-flow")
+        store.save(RoleChatPreference(myRole = RoleChatStore.RECIPROCAL_ROLE, tone = RoleChatStore.DIRECT_TONE))
+        val page = shot.copy(messages = emptyList())
+        val ctx = ContextBuilder.build(context, page, PupcallAdapter.PACKAGE, prefs)
+        var calls = 0
+        val client = ReplyClient(prefs) { _, _, body ->
+            calls++
+            assertTrue(body.getJSONArray("messages").getJSONObject(1).getString("content").contains("没有读到可用聊天正文"))
+            JSONObject().put("choices", org.json.JSONArray().put(JSONObject().put("message", JSONObject()
+                .put("content", """{"replies":[{"style":"fresh_opening","text":"来找你聊两句"},
+                    {"style":"light_callback","text":"上次聊得挺开心 想接着聊"},
+                    {"style":"playful","text":"看你这招呼 我也想认识你"}]}"""))))
+        }
+        val replies = client.openers(page, "尚未确认", ctx)
+        assertEquals(1, calls)
+        assertEquals(2, replies.size)
+        assertFalse(replies.any { it.text.contains("上次聊得") })
+    }
+
+    private fun assertPreferenceAcrossRoutes(preference: RoleChatPreference, marker: String) {
+        val prefs = Prefs(context, "firm-role-flow")
+        assertTrue(store.save(preference))
+        assertEquals(preference.myRole, RoleChatStore(context).load().myRole)
+        assertEquals(preference.tone, RoleChatStore(context).load().tone)
+        val page = shot.copy(messages = listOf(Msg("other", "今天下课了")))
+        var calls = 0
+        for (app in listOf(PupcallAdapter.PACKAGE, "com.tencent.mm", "com.tantan.x", "cn.soulapp.android")) {
+            val ctx = ContextBuilder.build(context, page, app, prefs)
+            for (purpose in listOf("reply", "opener", "invitation")) {
+                val styles = when (purpose) {
+                    "opener" -> listOf("fresh_opening", "light_callback", "playful")
+                    "invitation" -> listOf("invite_direct", "invite_context", "invite_playful")
+                    else -> listOf("natural", "follow_detail", "playful")
+                }
+                val client = ReplyClient(prefs) { _, _, body ->
+                    calls++
+                    val messages = body.getJSONArray("messages")
+                    val system = messages.getJSONObject(0).getString("content")
+                    assertEquals(app == PupcallAdapter.PACKAGE, system.contains(marker))
+                    if (purpose == "opener") {
+                        assertTrue(messages.getJSONObject(1).getString("content").contains("fresh_opening 必须换到轻松的新话题"))
+                        assertFalse(system.contains("【呼叫小狗本轮写法】"))
+                    }
+                    val replies = org.json.JSONArray()
+                    styles.forEachIndexed { i, style -> replies.put(JSONObject().put("style", style)
+                        .put("text", listOf("轻松接话", "自然回应", "聊聊近况")[i])) }
+                    JSONObject().put("choices", org.json.JSONArray().put(JSONObject().put("message",
+                        JSONObject().put("content", JSONObject().put("replies", replies).toString()))))
+                }
+                when (purpose) {
+                    "opener" -> client.openers(page, "普通认识", ctx)
+                    "invitation" -> client.invitations(page, "普通认识", ctx,
+                        com.jev.probe.jev.InvitationPlan(com.jev.probe.jev.InvitationAction.INVITE, null, "", emptyList()))
+                    else -> client.draft(page, "普通认识", ctx)
+                }
+            }
+        }
+        assertEquals(12, calls)
+    }
 }

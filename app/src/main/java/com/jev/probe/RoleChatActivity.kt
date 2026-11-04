@@ -62,6 +62,7 @@ class RoleChatActivity : Activity() {
         val enabled = Switch(this).apply { text = "启用角色沟通辅助"; isChecked = current.enabled; body.addView(this) }
         line("我的相处偏好", true)
         val myRole = choice(RoleChatStore.MY_ROLES, current.myRole)
+        line("互相带节奏：可以主动表达兴趣，也能接对方的玩笑；不代表双方已经确认某种角色关系。")
         line("建议的说话语气", true)
         val tone = choice(RoleChatStore.TONES, current.tone)
         val other = if (contact != null) {
@@ -75,7 +76,7 @@ class RoleChatActivity : Activity() {
                 other?.text?.toString()?.trim()?.ifBlank { "未确认" } ?: "未确认",
                 tone.selectedItem.toString(), limits.text.toString())
             if (store.save(value, contact?.id)) {
-                Toast.makeText(this, "已保存 下次分析和开场生效", Toast.LENGTH_SHORT).show(); finish()
+                Toast.makeText(this, "已保存 下次分析 开场和邀约生效", Toast.LENGTH_SHORT).show(); finish()
             } else Toast.makeText(this, "保存失败 请重试", Toast.LENGTH_SHORT).show()
         }
         if (contact != null) button("恢复使用本 App 默认偏好") {

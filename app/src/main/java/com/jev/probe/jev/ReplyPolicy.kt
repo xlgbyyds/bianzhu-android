@@ -76,6 +76,14 @@ internal object ReplyPolicy {
             .filter { it.text in allowed }.distinctBy { it.text }.take(3)
     }
 
+    // Empty or unreadable conversations cannot substantiate shared-history claims.
+    // This guard checks concrete references, not every possible invented memory.
+    private val sharedPast = Regex("(?:上次|之前|前几天|昨天|那天).{0,5}(?:聊得|聊过|你说|你讲|你提|咱们|我们)|" +
+        "你(?:上次|之前).{0,4}(?:说|讲|提)|记得你(?:那句|说过|上次)")
+    fun withGroundedConversationReferences(candidates: List<ReplySuggestion>,
+                                           hasDialogueEvidence: Boolean): List<ReplySuggestion> =
+        if (hasDialogueEvidence) candidates else candidates.filterNot { sharedPast.containsMatchIn(it.text) }
+
     // Known bad real-device outputs: an old "喝西北风" joke became today's
     // weather, and a past "等会回你" became a made-up "忙完了" status.
     // This deliberately covers concrete assertions, not every possible fact.

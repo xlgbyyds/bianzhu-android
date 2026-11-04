@@ -10,6 +10,12 @@ import com.jev.probe.core.Msg
 import java.time.LocalDate
 
 class ReplyPolicyTest {
+    @Test fun unreadableConversationCannotSupportInventedSharedChatReferences() {
+        val texts = candidates("上次聊得挺开心 想接着聊", "你之前说过喜欢这个", "来找你聊两句", "你上次去哪玩了")
+        assertEquals(listOf("来找你聊两句", "你上次去哪玩了"),
+            ReplyPolicy.withGroundedConversationReferences(texts, false).map { it.text })
+        assertEquals(texts, ReplyPolicy.withGroundedConversationReferences(texts, true))
+    }
     private val currentDay = LocalDate.of(2026, 10, 10)
     private fun candidates(vararg text: String) = text.map { ReplySuggestion(it, "fresh_opening", "") }
 

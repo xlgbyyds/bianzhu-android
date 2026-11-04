@@ -4,10 +4,100 @@ import com.jev.probe.core.ChatSnapshot
 import com.jev.probe.core.Msg
 import com.jev.probe.core.RoleChatMetadata
 import com.jev.probe.core.RoleChatPreference
+import com.jev.probe.core.RoleChatStore
 import org.junit.Assert.*
 import org.junit.Test
 
 class RoleChatGuideTest {
+    private fun directScene(shot: ChatSnapshot) = RoleChatGuide.guidance(shot,
+        RoleChatPreference(myRole = RoleChatStore.RECIPROCAL_ROLE, tone = RoleChatStore.DIRECT_TONE))
+
+    @Test fun directToneWorksWithoutRoleKeywordsAndKeepsPersonalFactsGrounded() {
+        val shot = snapshot("你对亲密关系怎么看")
+        val text = RoleChatGuide.replyInstruction(shot, directScene(shot), false)
+        assertTrue(text.contains("【直球调侃写法】"))
+        assertTrue(text.contains("不编个人经历"))
+        assertFalse(text.contains("【明确主导写法】"))
+        assertTrue(directScene(shot).contains("互相带节奏"))
+        val empty = shot.copy(messages = emptyList())
+        assertTrue(RoleChatGuide.replyInstruction(empty, directScene(empty), true).contains("【直球调侃写法】"))
+        assertEquals("", RoleChatGuide.replyInstruction(empty, directScene(empty), false))
+    }
+
+    @Test fun reciprocalBanterDoesNotImposeSubmissionOnEitherPerson() {
+        val shot = snapshot("嫲嫲来了 还不快打招呼")
+        val text = RoleChatGuide.replyInstruction(shot, directScene(shot), true)
+        assertTrue(text.contains("互相斗嘴"))
+        assertFalse(text.contains("我更习惯照顾人"))
+        assertFalse(text.contains("我先看看你怎么照顾人"))
+    }
+
+    @Test fun directToneStillYieldsToBoundariesFeedbackUnknownContentAndDecision() {
+        for (text in listOf("别这样", "别叫我小狗", "好难过 想抱抱", "你说话像机器人")) {
+            val shot = snapshot(text)
+            assertEquals(text, "", RoleChatGuide.replyInstruction(shot, directScene(shot), true))
+        }
+        val shot = snapshot("你好")
+        assertEquals("", RoleChatGuide.replyInstruction(shot,
+            RoleChatGuide.guidance(shot, RoleChatPreference(enabled = false, tone = RoleChatStore.DIRECT_TONE)), true))
+        val unknown = shot.copy(messages = listOf(Msg("other", "内容未知", kind = com.jev.probe.core.MessageKind.VOICE_UNKNOWN)))
+        assertEquals("", RoleChatGuide.replyInstruction(unknown, directScene(unknown), false))
+        for (action in listOf(InvitationAction.WAIT, InvitationAction.STOP, InvitationAction.CLARIFY))
+            assertFalse(RoleChatGuide.invitationInstruction(shot, directScene(shot), action).contains("【直球调侃写法】"))
+        assertTrue(RoleChatGuide.invitationInstruction(shot, directScene(shot), InvitationAction.INVITE)
+            .contains("【直球调侃写法】"))
+        val minor = shot.copy(roleChat = RoleChatMetadata("Sub", 17))
+        assertEquals("", RoleChatGuide.replyInstruction(minor, directScene(minor), true))
+    }
+
+    private fun firmScene(shot: ChatSnapshot) = RoleChatGuide.guidance(shot,
+        RoleChatPreference(myRole = RoleChatStore.FIRM_ROLE))
+
+    @Test fun firmVoiceNeedsExplicitPreferenceAndCanOpenWithoutIncomingRoleKeywords() {
+        val shot = snapshot("今天下课了")
+        assertEquals("", RoleChatGuide.replyInstruction(shot,
+            RoleChatGuide.guidance(shot, RoleChatPreference()), false))
+        assertTrue(RoleChatGuide.replyInstruction(shot, firmScene(shot), false).contains("【明确主导写法】"))
+        val empty = shot.copy(messages = emptyList())
+        assertTrue(RoleChatGuide.replyInstruction(empty, firmScene(empty), true).contains("【明确主导写法】"))
+        assertEquals("", RoleChatGuide.replyInstruction(empty, firmScene(empty), false))
+        assertEquals("", RoleChatGuide.replyInstruction(shot, "", true))
+        val tagOnly = snapshot("今天下课了", "Dom\n用户明确偏好：明确主导；")
+        assertEquals("", RoleChatGuide.replyInstruction(tagOnly,
+            RoleChatGuide.guidance(tagOnly, RoleChatPreference()), false))
+    }
+
+    @Test fun firmVoiceKeepsOwnPerspectiveWhenOtherUsesLeadingRole() {
+        val shot = snapshot("嫲嫲来了 还不快打招呼")
+        val instruction = RoleChatGuide.replyInstruction(shot, firmScene(shot), false)
+        assertTrue(instruction.contains("我更习惯照顾人"))
+        assertFalse(instruction.contains("我先看看你怎么照顾人"))
+        assertTrue(instruction.contains("不能强迫她换角色"))
+    }
+
+    @Test fun firmPreferenceDoesNotOverrideCurrentBoundaryFeedbackOrAge() {
+        for (text in listOf("别命令我 主人", "不喜欢被管", "好难过 想抱抱", "你说话像机器人", "我家小狗打疫苗了")) {
+            val shot = snapshot(text)
+            assertEquals(text, "", RoleChatGuide.replyInstruction(shot, firmScene(shot), true))
+        }
+        val minor = snapshot("你好").copy(roleChat = RoleChatMetadata("Sub", 17))
+        assertEquals("", RoleChatGuide.replyInstruction(minor, firmScene(minor), true))
+        assertEquals("", RoleChatGuide.invitationInstruction(minor, firmScene(minor), InvitationAction.INVITE))
+    }
+
+    @Test fun strongerInvitationVoiceCannotTurnWaitStopOrClarifyIntoAnotherRequest() {
+        val shot = snapshot("这周末可以")
+        for (action in listOf(InvitationAction.WAIT, InvitationAction.STOP, InvitationAction.CLARIFY)) {
+            val text = RoleChatGuide.invitationInstruction(shot, firmScene(shot), action)
+            assertFalse(text.contains("【明确主导写法】"))
+            assertTrue(text.contains("加微信"))
+        }
+        assertTrue(RoleChatGuide.invitationInstruction(shot, firmScene(shot), InvitationAction.CONFIRM)
+            .contains("只落实已答应见面的未定细节"))
+        assertTrue(RoleChatGuide.invitationInstruction(shot, firmScene(shot), InvitationAction.INVITE)
+            .contains("不捆绑加微信与见面"))
+        assertEquals("", RoleChatGuide.invitationInstruction(shot, "", InvitationAction.INVITE))
+    }
     private fun snapshot(text: String, role: String = "Dom") = ChatSnapshot("示例联系人",
         listOf(Msg("other", text)), roleChat = RoleChatMetadata(role, 25))
     @Test fun profileAndCurrentSpeechRemainSeparateAndDoNotDeclareBotsOrRelationships() {
