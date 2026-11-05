@@ -11,6 +11,7 @@ class ReplyStylePolicyTest {
         assertFalse(ReplyStylePolicy.isDelayed(2))
         assertTrue(ReplyStylePolicy.isDelayed(3))
         assertEquals(listOf("restart", "resume_topic", "share_now"), ReplyStylePolicy.stylesFor(12))
-        assertEquals(listOf("natural", "follow_detail", "playful"), ReplyStylePolicy.stylesFor(null))
+        assertEquals(listOf("natural", "follow_detail", "simple"), ReplyStylePolicy.stylesFor(null))
+        assertEquals(listOf("natural", "follow_detail", "playful"), ReplyStylePolicy.stylesFor(null, true))
     }
 }

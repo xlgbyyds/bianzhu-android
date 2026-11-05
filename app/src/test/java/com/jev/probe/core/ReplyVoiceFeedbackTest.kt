@@ -57,4 +57,23 @@ class ReplyVoiceFeedbackTest {
         assertEquals(count, ledger.totalLineCount())
         assertTrue(ledger.ownExpressions(id, app).contains("说到底还是不够成熟"))
     }
+
+    @Test fun weakAutomaticExampleIsExcludedFromStyleButRetainedAsConversationEvidence() {
+        val context = RuntimeEnvironment.getApplication()
+        val ledger = ConversationLedger.get(context)
+        val kb = KbStore.get(context)
+        val app = "test.concrete.app"
+        val id = "concrete-example-scope"
+        kb.saveContact(Contact(id, "具体表达测试", apps = listOf(app), memoryEnabled = true))
+        ledger.record(id, app, ChatSnapshot("具体表达测试", listOf(
+            Msg("me", "看来你的品味一直挺好"), Msg("other", "嗯"),
+            Msg("me", "这碗面放的辣椒也太多了"))), false)
+        val before = ledger.totalLineCount()
+        val ctx = ContextBuilder.build(context, ChatSnapshot("具体表达测试", listOf(Msg("other", "是有点辣"))), app, Prefs(context))
+        assertFalse(ctx.replyVoiceGuidance.contains("历史我的发言：看来你的品味一直挺好"))
+        assertTrue(ctx.replyVoiceGuidance.contains("历史我的发言：这碗面放的辣椒也太多了"))
+        assertTrue(ctx.history.any { it.text == "看来你的品味一直挺好" })
+        assertEquals(before, ledger.totalLineCount())
+        assertTrue(ledger.ownExpressions(id, app).contains("看来你的品味一直挺好"))
+    }
 }

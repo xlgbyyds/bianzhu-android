@@ -74,7 +74,7 @@ class ReplyProfileRouteTest {
             }
         }
         val draft = client.draft(ChatSnapshot("测试", listOf(Msg("other", "这碗面辣椒给太多了"))), "刚认识")
-        assertEquals(listOf("natural", "follow_detail", "playful"), draft.map { it.style })
+        assertEquals(listOf("natural", "follow_detail", "simple"), draft.map { it.style })
         assertEquals(1, calls)
         val openers = client.openers(ChatSnapshot("测试", listOf(Msg("other", "哈喽"))), "刚认识")
         assertEquals(3, openers.size)
@@ -247,7 +247,7 @@ class ReplyProfileRouteTest {
         }
         val suggestions = client.openers(ChatSnapshot("测试联系人", emptyList()), "熟悉亲密")
         assertEquals(listOf("今天换我讲点我的事", "今天想多黏你一会"), suggestions.map { it.text })
-        assertEquals(listOf("fresh_opening", "playful"), suggestions.map { it.style })
+        assertEquals(listOf("fresh_opening", "simple"), suggestions.map { it.style })
     }
 
     @Test fun profileAndShortRepliesDisableDeepSeekThinkingWithoutChangingOtherProviders() {

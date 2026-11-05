@@ -163,6 +163,8 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         sp.edit().remove(K_REPLY_STYLE).remove(K_REPLY_FEEDBACK).apply()
     }
 
+    fun prefersPlayfulReplies(): Boolean = sp.getString(K_REPLY_STYLE, "") == "playful"
+
     fun replyFeedbackGuidance(): String {
         val style = sp.getString(K_REPLY_STYLE, "").orEmpty()
         val feedback = sp.getStringSet(K_REPLY_FEEDBACK, emptySet()).orEmpty()

@@ -238,6 +238,9 @@ object JevQuestions {
                     "Prefer a concrete, ordinary response to what was actually said over a polished slogan, " +
                     "grand compliment, invented nickname, forced metaphor, emotional monologue or unnecessary flirt. " +
                     "A brief plain reply can be best; do not reward cleverness or intensity for their own sake. " +
+                    "Prefer answering the actual question or engaging with a specific detail over assessing the person's character, taste, maturity or value. " +
+                    "Do not infer personality or others' trust from a routine update unless the person asked for that assessment. " +
+                    "Repeating their words followed by a generic verdict adds little; direct affection and simple acknowledgment can still be appropriate. " +
                     "Prefer listening over repeatedly summarizing or judging someone's story. Penalize unsupported motives, " +
                     "jokes about an unresolved hurt, escalating insults at a third person, and wrong referents. " +
                     "Humor must fit the topic and the other person's engagement. Do not infer a need for comfort from every ordinary update. " +

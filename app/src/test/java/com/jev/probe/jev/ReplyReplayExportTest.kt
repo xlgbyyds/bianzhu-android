@@ -39,7 +39,7 @@ class ReplyReplayExportTest {
             } }
             val history = messages.dropLast(10).map { LogEntry(it.side, it.text, 0, "com.tencent.mm") }
             val ctx = ChatContext(contact, history, emptyList(), contact.relationshipProfiles["com.tencent.mm"],
-                ReplyVoicePolicy.guidance(emptyList(), emptyList(), true))
+                ReplyVoicePolicy.guidance(emptyList(), emptyList(), case.optBoolean("styleComplaint", true)))
             val client = ReplyClient(prefs) { _, _, body ->
                 result.put(JSONObject().put("name", case.getString("name")).put("body", body))
                 JSONObject().put("choices", JSONArray().put(JSONObject().put("message", JSONObject().put("content",
