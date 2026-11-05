@@ -6,12 +6,15 @@ import android.graphics.drawable.GradientDrawable
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.HorizontalScrollView
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
@@ -55,10 +58,13 @@ class KnowledgeActivity : AppCompatActivity() {
     private lateinit var contactOrder: ContactListOrder
 
     /** 0 = notes, 1 = contacts. */
-    private var tab = 0
+    private var tab = 1
+    private var searchQuery = ""
+    private var appFilter = ""
+    private val expandedContacts = mutableSetOf<String>()
 
-    private val accent = Color.parseColor("#3A7AFE")
-    private val ink = Color.parseColor("#111827")
+    private val accent = Color.parseColor("#607C92")
+    private val ink = Color.parseColor("#263442")
     private val sub = Color.parseColor("#6B7280")
     private val pillOff = Color.parseColor("#EEF1F5")
     private val red = Color.parseColor("#DC2626")
@@ -70,8 +76,10 @@ class KnowledgeActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         store = KbStore.get(this)
         contactOrder = ContactListOrder(this)
-        tab = savedInstanceState?.getInt("kbTab", 0) ?: 0
-        window.decorView.setBackgroundColor(Color.parseColor("#F2F3F5"))
+        tab = savedInstanceState?.getInt("kbTab", 1) ?: 1
+        searchQuery = savedInstanceState?.getString("kbSearch").orEmpty()
+        appFilter = savedInstanceState?.getString("kbApp").orEmpty()
+        window.decorView.setBackgroundColor(Color.parseColor("#F7F5F1"))
 
         val scroll = ScrollView(this)
         container = LinearLayout(this).apply {
@@ -81,12 +89,11 @@ class KnowledgeActivity : AppCompatActivity() {
         container.padForSystemBars()   // edge-to-edge: keep the title off the status bar
         scroll.addView(container)
         setContentView(scroll)
-        render()
     }
 
     override fun onResume() {
         super.onResume()
-        if (::container.isInitialized && tab == 1) render()
+        if (::container.isInitialized) render()
     }
 
     override fun onDestroy() {
@@ -101,8 +108,8 @@ class KnowledgeActivity : AppCompatActivity() {
         contactListGeneration++
         container.removeAllViews()
         container.addView(text("知识库与联系人", 24f, ink, bold = true))
-        container.addView(text("聊天记忆默认只存在本机。首次分析联系人时会用设置中的回复模型分批读取该 App 的全部已保存记录，生成后自动关联到此联系人并用于后续建议；可随时查看和编辑。",
-            12f, sub).apply { setPadding(0, dp(6), 0, dp(4)) })
+        container.addView(text(if (tab == 1) "查看聊天记忆 管理每个人的关系与偏好" else "保存想让助手记住的事实与约定",
+            13f, sub).apply { setPadding(0, dp(6), 0, dp(4)) })
         container.addView(tabs())
         if (tab == 0) renderNotes() else renderContacts()
     }
@@ -114,13 +121,12 @@ class KnowledgeActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
         }
-        listOf("笔记", "联系人").forEachIndexed { i, name ->
+        listOf(1 to "联系人", 0 to "知识笔记").forEach { (i, name) ->
             val pill = TextView(this).apply {
                 text = name; textSize = 13f; gravity = Gravity.CENTER
                 setPadding(dp(18), dp(8), dp(18), dp(8))
                 layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) }
+                    0, dp(44), 1f).apply { rightMargin = dp(8) }
                 setTextColor(if (i == tab) Color.WHITE else sub)
                 setTypeface(typeface, if (i == tab) Typeface.BOLD else Typeface.NORMAL)
                 background = round(dp(9), if (i == tab) accent else pillOff)
@@ -254,8 +260,8 @@ class KnowledgeActivity : AppCompatActivity() {
 
     private fun renderContacts() {
         val contacts = store.contacts()
-        container.addView(twoButtons("新建联系人", { editContactDialog(null) }, null, null))
         if (contacts.isEmpty()) {
+            container.addView(twoButtons("＋ 新建联系人", { editContactDialog(null) }, "使用说明", { showDirectoryHelp() }))
             container.addView(emptyCard(
                 "还没有联系人。也可以在聊天里长按悬浮球，选「把当前会话存为联系人」。"))
             return
@@ -270,50 +276,143 @@ class KnowledgeActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed || tab != 1 || generation != contactListGeneration) return@runOnUiThread
                 section.removeAllViews()
                 val counts = result.getOrNull()
-                if (counts == null) {
-                    section.addView(twoButtons("数量读取失败，点此重试", { render() }, null, null))
-                    return@runOnUiThread
-                }
-                val ordered = contactOrder.arrange(store.contacts(), counts)
-                section.addView(twoButtons(
-                    if (contactOrder.manual) "按记忆降序" else "记忆降序 ✓", {
-                        if (contactOrder.useMemoryOrder()) render() else toast("排序保存失败，请重试")
-                    }, "手动拖动排序", {
-                        ContactOrderDialog.show(this, ordered, counts) { ids ->
-                            val saved = contactOrder.saveManual(ids)
-                            if (saved) { toast("联系人顺序已保存"); render() }
-                            saved
+                val current = store.contacts()
+                if (counts == null) section.addView(twoButtons("记忆数量读取失败 · 重试", { render() }, null, null))
+                val ordered = contactOrder.arrange(current, counts.orEmpty())
+                section.addView(text("${current.size} 位联系人" +
+                    (counts?.let { "  ·  ${it.values.sum()} 条记忆" } ?: "  ·  数量暂不可用") +
+                    if (contactOrder.manual) "  ·  手动顺序" else "  ·  记忆降序", 12f, sub)
+                    .apply { setPadding(dp(2), dp(14), 0, dp(4)) })
+                section.addView(twoButtons("＋ 新建联系人", { editContactDialog(null) }, "排序", {
+                    AlertDialog.Builder(this).setTitle("联系人排序")
+                        .setItems(arrayOf("聊天记忆从多到少", "手动拖动排序")) { _, choice ->
+                            if (choice == 0) {
+                                if (contactOrder.useMemoryOrder()) render() else toast("排序保存失败，请重试")
+                            } else ContactOrderDialog.show(this, ordered, counts.orEmpty()) { ids ->
+                                val saved = contactOrder.saveManual(ids)
+                                if (saved) { toast("联系人顺序已保存"); render() }
+                                saved
+                            }
                         }
-                    }))
-                section.addView(text(if (contactOrder.manual)
-                    "当前：手动顺序 · 新联系人追加在后面"
-                else "当前：聊天记忆从多到少 · 按已保存记录条数排序", 12f, sub)
-                    .apply { setPadding(dp(2), dp(8), 0, dp(2)) })
-                ordered.forEach { section.addView(contactRow(it, counts[it.id] ?: 0)) }
-                section.addView(text("点条目编辑，长按删除。手动排序请使用上方排序按钮。", 11f, sub)
-                    .apply { setPadding(dp(2), dp(12), 0, 0) })
+                        .setNegativeButton("取消", null).show()
+                }))
+                addContactDirectory(section, ordered, counts)
             }
         }
     }
 
+    private fun showDirectoryHelp() {
+        AlertDialog.Builder(this).setTitle("联系人与记忆")
+            .setMessage("聊天记忆：查看、核对或修改已保存的双方消息与时间。\n\n关系档案：根据此联系人此 App 的记录生成，可查看和编辑；手动补充放在“编辑联系人”里。\n\n同名联系人按 App 区分；改备注后可在编辑页维护已确认备注。\n\n记录只保存在本机，生成建议或档案时会把相关内容发送给你配置的模型接口。")
+            .setPositiveButton("知道了", null).show()
+    }
+
+    /** Search and filtering only redraw views; they never write contact or memory data. */
+    private fun addContactDirectory(section: LinearLayout, contacts: List<Contact>, counts: Map<String, Int>?) {
+        val search = edit(searchQuery, "搜索名字、备注或 App").apply {
+            isSingleLine = true
+            setPadding(dp(14), dp(13), dp(14), dp(13))
+        }
+        section.addView(search)
+        val apps = contacts.flatMap { it.apps }.distinct()
+        if (appFilter !in apps) appFilter = ""
+        val filters = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(10), 0, dp(2))
+        }
+        section.addView(HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false; addView(filters)
+        })
+        val result = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        section.addView(result)
+        fun refreshRows() {
+            result.removeAllViews()
+            val visible = ContactDirectory.visible(contacts, searchQuery, appFilter, ::appLabel)
+            if (visible.isEmpty()) result.addView(emptyCard("没有匹配的联系人，试试其他名字或 App。"))
+            else visible.forEach { result.addView(contactRow(it, counts?.get(it.id) ?: if (counts == null) -1 else 0)) }
+            result.addView(text("联系人与记忆使用说明  ›", 12f, sub).apply {
+                minHeight = dp(48); gravity = Gravity.CENTER
+                setOnClickListener { showDirectoryHelp() }
+            })
+        }
+        val choices = listOf("" to "全部") + apps.map { it to appLabel(it) }
+        fun refreshFilters() {
+            filters.removeAllViews()
+            choices.forEach { (pkg, title) ->
+                filters.addView(text(title, 13f, if (pkg == appFilter) Color.WHITE else sub).apply {
+                    gravity = Gravity.CENTER
+                    minHeight = dp(44)
+                    setPadding(dp(16), dp(8), dp(16), dp(8))
+                    background = round(dp(12), if (pkg == appFilter) accent else pillOff)
+                    layoutParams = LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8) }
+                    setOnClickListener { appFilter = pkg; refreshFilters(); refreshRows() }
+                })
+            }
+        }
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                searchQuery = s?.toString().orEmpty(); refreshRows()
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+        refreshFilters(); refreshRows()
+    }
+
     private fun contactRow(c0: Contact, logN: Int): View {
         val c = card()
-        c.addView(text(c0.name.ifBlank { "（无名）" }, 15f, ink, bold = true))
+        val head = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        head.addView(text(c0.name.ifBlank { "（无名）" }, 18f, ink, bold = true).apply {
+            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        head.addView(text(if (c0.memoryEnabled) "记忆已开启" else "记忆未开启", 11f,
+            if (c0.memoryEnabled) Color.parseColor("#48705A") else sub).apply {
+            setPadding(dp(9), dp(5), dp(9), dp(5))
+            background = round(dp(8), if (c0.memoryEnabled) Color.parseColor("#EDF4EE") else pillOff)
+        })
+        c.addView(head)
         if (c0.aliases.isNotEmpty())
             c.addView(text("别名：" + c0.aliases.joinToString("、"), 12f, sub)
                 .apply { setPadding(0, dp(3), 0, 0) })
         if (c0.apps.isNotEmpty())
             c.addView(text("来源：" + c0.apps.joinToString("、") { appLabel(it) }, 12f, sub)
                 .apply { setPadding(0, dp(3), 0, 0) })
-        if (c0.relationship.isNotBlank())
-            c.addView(text("关系：" + c0.relationship.replace("\n", " ").take(40), 12f, sub)
-                .apply { setPadding(0, dp(3), 0, 0) })
-        c.addView(text(if (c0.memoryEnabled) "聊天记忆：已开启" else "聊天记忆：未开启",
-            12f, sub).apply { setPadding(0, dp(3), 0, 0) })
-        if (c0.notes.isNotBlank())
-            c.addView(text("备注：" + c0.notes.replace("\n", " ").take(40), 12f, sub)
-                .apply { setPadding(0, dp(3), 0, 0) })
+        val savedDetails = listOfNotNull(
+            "专属关系已设置".takeIf { c0.relationship.isNotBlank() },
+            "备注已填写".takeIf { c0.notes.isNotBlank() })
+        if (savedDetails.isNotEmpty()) c.addView(text(savedDetails.joinToString(" · "), 12f, sub)
+            .apply { setPadding(0, dp(3), 0, 0) })
 
+        val profileSummary = when {
+            c0.relationshipProfiles.isNotEmpty() -> "关系档案已保存 · ${c0.relationshipProfiles.size} 个 App"
+            c0.relationshipProfileDrafts.isNotEmpty() -> "有待审核的关系档案"
+            else -> "关系档案尚未生成"
+        }
+        c.addView(text(profileSummary, 12f, sub).apply { setPadding(0, dp(6), 0, 0) })
+        c.addView(twoButtons(if (logN >= 0) "聊天记忆 · $logN 条" else "查看聊天记忆", {
+            startActivity(Intent(this, HistoryActivity::class.java).putExtra(HistoryActivity.EXTRA_CONTACT_ID, c0.id))
+        }, "编辑联系人", { editContactDialog(c0) }))
+        val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val expand = text("关系档案与管理  ▾", 13f, accent, bold = true).apply {
+            gravity = Gravity.CENTER_VERTICAL; minHeight = dp(48)
+            setPadding(0, dp(10), 0, dp(6))
+        }
+        fun updateDetails() {
+            val expanded = c0.id in expandedContacts
+            expand.text = if (expanded) "收起关系档案与管理  ▴" else "关系档案与管理  ▾"
+            details.visibility = if (expanded) View.VISIBLE else View.GONE
+            if (expanded && details.childCount == 0) addContactDetails(details, c0, logN)
+        }
+        expand.setOnClickListener {
+            if (!expandedContacts.add(c0.id)) expandedContacts.remove(c0.id)
+            updateDetails()
+        }
+        c.addView(expand); c.addView(details); updateDetails()
+        return c
+    }
+
+    private fun addContactDetails(c: LinearLayout, c0: Contact, logN: Int) {
         val profileApps = c0.apps.filter { it in PROFILE_APPS }
         if (profileApps.isNotEmpty()) {
             c.addView(label("按 App 隔离的关系档案"))
@@ -353,39 +452,33 @@ class KnowledgeActivity : AppCompatActivity() {
             }
         }
 
-        c.addView(TextView(this).apply {
-            text = "查看 / 编辑聊天记忆（$logN 条采集行） ›"
-            textSize = 13f; setTextColor(accent); setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(12), 0, dp(7))
-            setOnClickListener {
-                startActivity(Intent(this@KnowledgeActivity, HistoryActivity::class.java)
-                    .putExtra(HistoryActivity.EXTRA_CONTACT_ID, c0.id))
-            }
-        })
         val clear = TextView(this).apply {
             text = "清空此人全部记忆"
             textSize = 11.5f; setTextColor(red)
+            minHeight = dp(48); gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(3), 0, dp(2))
             setOnClickListener {
-                if (logN == 0) { toast("本来就没有历史"); return@setOnClickListener }
+                if (logN <= 0) { toast(if (logN == 0) "本来就没有历史" else "请先重试读取记忆数量"); return@setOnClickListener }
                 confirm("清空历史", "删掉「${c0.name}」的 $logN 条聊天历史？联系人档案保留。") {
                     store.clearLog(c0.id); render()
                 }
             }
         }
         c.addView(clear)
-        c.setOnClickListener { editContactDialog(c0) }
-        c.setOnLongClickListener {
-            confirm("删除联系人", "删除「${c0.name}」及其全部历史？不可恢复。") {
-                store.deleteContact(c0.id); render()
+        c.addView(text("删除联系人…", 12f, red).apply {
+            minHeight = dp(48); gravity = Gravity.CENTER_VERTICAL
+            setOnClickListener {
+                confirm("删除联系人", "删除「${c0.name}」及其全部历史？不可恢复。") {
+                    store.deleteContact(c0.id); render()
+                }
             }
-            true
-        }
-        return c
+        })
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putInt("kbTab", tab)
+        outState.putString("kbSearch", searchQuery)
+        outState.putString("kbApp", appFilter)
         super.onSaveInstanceState(outState)
     }
 
@@ -768,6 +861,8 @@ class KnowledgeActivity : AppCompatActivity() {
 
     private fun wideBtn(labelText: String, primary: Boolean, onClick: () -> Unit) = TextView(this).apply {
         text = labelText; textSize = 14f; gravity = Gravity.CENTER
+        maxLines = 1; minHeight = dp(44)
+        setAutoSizeTextTypeUniformWithConfiguration(11, 14, 1, TypedValue.COMPLEX_UNIT_SP)
         setTypeface(typeface, Typeface.BOLD)
         setTextColor(if (primary) Color.WHITE else accent)
         background = round(dp(11), if (primary) accent else Color.WHITE, stroke = !primary)

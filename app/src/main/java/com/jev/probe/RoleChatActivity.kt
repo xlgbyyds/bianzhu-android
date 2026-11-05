@@ -44,11 +44,12 @@ class RoleChatActivity : Activity() {
         val snapshot = SnapshotReviewCodec.decode(intent.getStringExtra("snapshot"))
         val store = RoleChatStore(this)
         val current = store.load(contact?.id)
-        line("角色沟通", true)
-        line(if (contact == null) "呼叫小狗 · 本 App 默认偏好"
+        line("亚文化沟通", true)
+        line(if (contact == null) "当前适配：呼叫小狗 · 默认偏好"
             else "${contact.name} · 仅此联系人在呼叫小狗的偏好", true)
         line(if (contact == null) "未保存联系人的会话使用本 App 默认偏好。要为某个人单独设置，请先在聊天页长按旁注，存入联系人。"
             else "偏好按档案 ID 保存；聊天备注变化后仍须核对联系人，不能凭旧名字套用。不影响微信或其他联系人的设置。")
+        line("保留角色用语理解与表达偏好。其他亚文化 App 需要完成适配后才能启用，不会自动套用到普通聊天。")
         if (snapshot?.roleChat != null) {
             line("这句话怎么理解", true)
             val latest = snapshot.messages.lastOrNull { it.side == "other" }

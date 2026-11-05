@@ -83,7 +83,6 @@ class MainActivity : AppCompatActivity() {
 
         // Readiness card
         container.addView(statusCard(ready, a11y, overlay, key))
-        container.addView(privacyHint())
         if (prefs.overlayHidden) {
             container.addView(actionRow("恢复旁注", "当前已隐藏；恢复后返回聊天页即可使用，无需关闭再开启总开关") {
                 prefs.overlayHidden = false
@@ -176,20 +175,6 @@ class MainActivity : AppCompatActivity() {
         return c
     }
 
-    /** One tappable line under the readiness card, opening the privacy policy page. */
-    private fun privacyHint(): View = text("读取的聊天内容只发往你自己配置的接口 · 隐私政策", 11f, sub).apply {
-        setPadding(dp(2), dp(8), 0, 0)
-        setOnClickListener { openUrl(PRIVACY_URL) }
-    }
-
-    /** Opens an external link; swallows the failure with a toast rather than crashing. */
-    private fun openUrl(url: String) {
-        runCatching {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }.onFailure {
-            Toast.makeText(this, "打不开浏览器", Toast.LENGTH_SHORT).show()
-        }
-    }
 
     private fun checkLine(label: String, ok: Boolean, okWord: String = "已开", noWord: String = "未开"): View {
         val row = LinearLayout(this).apply {
@@ -299,7 +284,4 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    companion object {
-        private const val PRIVACY_URL = "https://chatjevs.com/privacy.html"
-    }
 }

@@ -380,7 +380,7 @@ class SettingsActivity : AppCompatActivity() {
         card2.addView(cardBtn("我的表达样本（查看、编辑、删除）") {
             startActivity(android.content.Intent(this, ConversationToolsActivity::class.java))
         })
-        card2.addView(cardBtn("角色沟通（呼叫小狗用语与偏好）") {
+        card2.addView(cardBtn("亚文化沟通 · 角色与表达偏好") {
             startActivity(android.content.Intent(this, RoleChatActivity::class.java))
         })
         val kbResult = resultText()
@@ -451,18 +451,6 @@ class SettingsActivity : AppCompatActivity() {
         card3.addView(seek)
         root.addView(card3)
 
-        // =================== 关于与隐私 ===================
-        root.addView(section("关于与隐私"))
-        val aboutCard = card()
-        aboutCard.addView(text(
-            "这个 App 会读取你当前聊天窗口的文字，发给你自己配置的模型接口做判断和起草回复。作者不运营服务器，收不到你的数据。",
-            12f, sub))
-        aboutCard.addView(cardBtn("隐私政策") { openUrl(PRIVACY_URL) })
-        aboutCard.addView(cardBtn("开源仓库") { openUrl(REPO_URL) })
-        aboutCard.addView(text("旁注 基于 Jev 聊天助手二次开发 保留原项目及狗头军师场景资料的开源许可", 12f, sub))
-        aboutCard.addView(text(versionLabel(), 11f, sub).apply { setPadding(0, dp(10), 0, dp(2)) })
-        root.addView(aboutCard)
-
         // =================== 保存 ===================
         root.addView(primaryBtn("保存全部设置") {
             // Address wins over the pill: a preset HOST in the box means that
@@ -512,6 +500,7 @@ class SettingsActivity : AppCompatActivity() {
             Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
         })
 
+        root.addView(text(versionLabel(), 11f, sub).apply { setPadding(0, dp(12), 0, dp(4)) })
         setContentView(scroll)
     }
 
@@ -581,18 +570,6 @@ class SettingsActivity : AppCompatActivity() {
     private fun draftPrefs(scratchName: String, fill: Prefs.() -> Unit): Prefs {
         getSharedPreferences(scratchName, MODE_PRIVATE).edit().clear().commit()
         return Prefs(this, scratchName).apply(fill)
-    }
-
-    /** Opens an external link; swallows the failure with a toast rather than crashing. */
-    private fun openUrl(url: String) {
-        runCatching {
-            startActivity(
-                android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
-        }.onFailure {
-            Toast.makeText(this, "打不开浏览器", Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun versionLabel(): String = try {
@@ -743,7 +720,5 @@ class SettingsActivity : AppCompatActivity() {
         private const val SCRATCH_REPLY = "jev_probe_scratch_reply"
         private const val SCRATCH_VISION = "jev_probe_scratch_vision"
 
-        private const val PRIVACY_URL = "https://chatjevs.com/privacy.html"
-        private const val REPO_URL = "https://github.com/jev-chat/jev-chat-jarvis"
     }
 }
