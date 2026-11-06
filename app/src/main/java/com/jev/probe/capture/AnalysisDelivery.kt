@@ -47,9 +47,9 @@ internal class AnalysisDelivery(
         }
         if (judgment == null || replies == null) return
         if (judgeError != null || draftError != null) complete()
-        else if (replies.size != 3) {
+        else if (replies.size !in 2..3) {
             if (replies.isNotEmpty()) showDraft(replies,
-                "本轮生成 ${replies.size} 条建议；Jev 排序需要 3 条，本轮已完成。可直接参考或重新分析。")
+                "本轮保留 ${replies.size} 条建议，无需候选间排序，本轮已完成。")
             complete()
         } else if (!rankStarted) {
             rankStarted = true

@@ -57,21 +57,15 @@ internal object ReplyPolicy {
     private val otherInvited = Regex(
         """((一起|约|要不要|来不来|有空).{0,12}(见面|吃饭|喝|逛|玩|出来))|((见面|吃饭|喝咖啡).{0,8}(吗|吧|？|\?))"""
     )
-    private val interrogative = Regex("""[?？]|(吗|呢|么)\s*$|你.{0,12}(怎么|什么|哪|有没有|要不要|是不是|能不能|会不会)""")
 
     fun safe(candidates: List<String>, latestOther: String, allowInvitation: Boolean = false): List<String> {
         val canAnswerInvite = allowInvitation || otherInvited.containsMatchIn(latestOther)
-        var questionCount = 0
         return candidates.map { it.trim() }.filter { it.isNotEmpty() }
             .filterNot { intrusive.containsMatchIn(it) || realTimeCheck.containsMatchIn(it) ||
                 courtesy.containsMatchIn(it.trimStart('“', '"', '「', '『')) ||
                 (!canAnswerInvite && invite.containsMatchIn(it)) }
-            .map { format(it) to interrogative.containsMatchIn(it) }
-            .filter { it.first.isNotEmpty() }.distinctBy { it.first }
-            .filter {
-                if (allowInvitation || !it.second) true
-                else if (questionCount++ == 0) true else false
-            }.take(3).map { it.first }
+            // Each candidate is an alternative, not another message sent in sequence.
+            .map(::format).filter(String::isNotEmpty).distinct().take(3)
     }
 
     fun safeSuggestions(candidates: List<ReplySuggestion>, latestOther: String,

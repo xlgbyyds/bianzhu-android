@@ -97,4 +97,16 @@ class JudgeContextTest {
         assertEquals("第二条", ranked.first().text)
         assertEquals(.8, ranked.first().prob, .001)
     }
+
+    @Test fun twoRemainingCandidatesRankWithoutAPhantomThirdChoice() {
+        val client = JudgeClient(Prefs(RuntimeEnvironment.getApplication(), "rank-two")) { _, _, body ->
+            val choices = body.getJSONObject("questions").getJSONObject("best_reply").getJSONObject("criteria")
+            assertEquals(2, choices.length())
+            assertFalse(choices.has("reply_c"))
+            JSONObject().put("answers", JSONObject().put("best_reply", JSONObject()
+                .put("choice", "reply_b").put("probabilities", JSONObject().put("reply_a", .2).put("reply_b", .8))))
+        }
+        val result = client.rank(snapshot, "朋友", listOf("第一条", "第二条"))
+        assertEquals(listOf("第二条", "第一条"), result.map { it.text })
+    }
 }

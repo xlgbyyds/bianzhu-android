@@ -61,12 +61,12 @@ class ReplyPolicyTest {
             it.contains("现在在哪") || it.contains("有空") })
     }
 
-    @Test fun atMostOneQuestionAmongThreeSuggestions() {
+    @Test fun independentQuestionAlternativesAreNotMistakenForRepeatedQuestioning() {
         val result = ReplyPolicy.safe(listOf(
             "你喜欢这个吗？", "你后来怎么想的？", "这事听着挺有趣。",
             "我懂你说的那个感觉。", "你还想聊什么？"
         ), "挺有趣的")
-        assertEquals(listOf("你喜欢这个吗", "这事听着挺有趣", "我懂你说的那个感觉"), result)
+        assertEquals(listOf("你喜欢这个吗", "你后来怎么想的", "这事听着挺有趣"), result)
     }
 
     @Test fun canAnswerAnInvitationThatTheOtherPersonActuallyMade() {
@@ -94,7 +94,7 @@ class ReplyPolicyTest {
     @Test fun punctuationIsRemovedOnlyAfterQuestionAndPrivacyChecks() {
         val result = ReplyPolicy.safe(listOf("今天开心？", "后来呢？", "你现在在哪？",
             "这句——有点意思…", "我记下了（笑）"), "哈哈")
-        assertEquals(listOf("今天开心", "这句 有点意思", "我记下了 笑"), result)
+        assertEquals(listOf("今天开心", "后来呢", "这句 有点意思"), result)
         assertTrue(result.none { Regex("\\p{P}").containsMatchIn(it) })
     }
 }

@@ -41,7 +41,7 @@ class AnalysisDeliveryTest {
         assertEquals(1, finishes)
     }
 
-    @Test fun twoDraftsFinishWithoutLeavingSortingPending() {
+    @Test fun twoDraftsRankOnceAndFinishEvenWhenRankingFails() {
         var issue: String? = null
         var ranks = 0
         var finishes = 0
@@ -49,10 +49,21 @@ class AnalysisDeliveryTest {
             { ranks++ }, { finishes++ })
         delivery.judgmentReceived(judgment())
         delivery.draftReceived(replies.take(2), null)
-        assertEquals(0, ranks)
+        assertEquals(1, ranks)
+        assertEquals(0, finishes)
+        delivery.rankingReceived(emptyList(), "排序失败")
         assertEquals(1, finishes)
-        assertTrue(issue.orEmpty().contains("本轮已完成"))
+        assertEquals("排序失败", issue)
         delivery.timeout()
+        assertEquals(1, finishes)
+    }
+
+    @Test fun oneDraftFinishesWithoutAnUnnecessaryRankingRequest() {
+        var finishes = 0
+        val delivery = AnalysisDelivery({}, { _, _ -> }, {}, {}, {},
+            { fail("A single alternative needs no ranking") }, { finishes++ })
+        delivery.draftReceived(replies.take(1), null)
+        delivery.judgmentReceived(judgment())
         assertEquals(1, finishes)
     }
 

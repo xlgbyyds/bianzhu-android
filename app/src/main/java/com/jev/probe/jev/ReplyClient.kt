@@ -327,6 +327,8 @@ class ReplyClient(
     }
 
     private fun parseSuggestions(content: String, styles: List<String>, snapshot: ChatSnapshot): List<ReplySuggestion> {
+        ReplyJson.requireUnambiguousKeys(content)
+        val structuredObject = content.contains('{')
         val parsed = runCatching {
             val start = content.indexOf('{')
             val end = content.lastIndexOf('}')
@@ -344,8 +346,12 @@ class ReplyClient(
                 usedStyles.add(style)
                 ReplySuggestion(text, style, rationale(style, snapshot))
             }
-        }.getOrDefault(emptyList())
+        }.getOrElse {
+            if (structuredObject) throw IllegalStateException("回复接口返回的JSON格式不完整 请重试 本次未展示原始结构文本")
+            emptyList()
+        }
         if (parsed.isNotEmpty()) return parsed.distinctBy { it.text }.sortedBy { styles.indexOf(it.style) }.take(3)
+        if (structuredObject) throw IllegalStateException("回复接口未返回有效回复条目 请重试")
         return parseCandidates(content).mapIndexed { index, text ->
             val style = styles.getOrElse(index) { styles[index % styles.size] }
             ReplySuggestion(text, style, rationale(style, snapshot))

@@ -18,4 +18,14 @@ class ReplyTurnPolicyTest {
         assertEquals(ReplyTurnPolicy.Mode.ORDINARY, ReplyTurnPolicy.mode(snapshot))
         assertEquals(ReplyTurnPolicy.Mode.ORDINARY, ReplyTurnPolicy.mode(ChatSnapshot("测试", listOf(Msg("other", "不难过了")))))
     }
+
+    @Test fun literalBoundaryOverridesNewAnglesButQuestionsAndQuotedStoriesDoNot() {
+        fun mode(text: String) = ReplyTurnPolicy.mode(ChatSnapshot("测试", listOf(Msg("other", text))))
+        assertEquals(ReplyTurnPolicy.Mode.BOUNDARY, mode("我不想和你发展 别再问了"))
+        assertEquals(ReplyTurnPolicy.Mode.BOUNDARY, mode("别再联系我了"))
+        for (text in listOf("我们才认识多久啊", "你对谁都这样吧哈哈", "我没说不想和你发展", "她说不想谈恋爱"))
+            assertEquals(text, ReplyTurnPolicy.Mode.ORDINARY, mode(text))
+        assertFalse(ReplyTurnPolicy.styles(ReplyTurnPolicy.Mode.BOUNDARY,
+            listOf("natural", "follow_detail", "new_angle")).contains("new_angle"))
+    }
 }

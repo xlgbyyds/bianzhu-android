@@ -145,7 +145,7 @@ class JudgeClient(private val prefs: Prefs,
     }
 
     private fun parseRanked(o: JSONObject?, candidates: List<String>): List<RankedReply> {
-        val keys = listOf("reply_a", "reply_b", "reply_c")
+        val keys = listOf("reply_a", "reply_b", "reply_c").take(candidates.size)
         val probs = o?.optJSONObject("probabilities")
             ?: throw IllegalStateException("判断接口未返回有效排序分值，保留未排序初稿")
         val scores = keys.map { probs.optDouble(it, Double.NaN) }

@@ -5,9 +5,15 @@ import com.jev.probe.core.ReplyVoicePolicy
 
 /** Small local routing decision, not a diagnosis of emotion or an extra model round. */
 internal object ReplyTurnPolicy {
-    enum class Mode { ORDINARY, STYLE_FEEDBACK, HURT }
+    enum class Mode { ORDINARY, STYLE_FEEDBACK, HURT, BOUNDARY }
+    private val explicitBoundary = Regex(
+        "^(?:我)?(?:现在|暂时|真的)?(?:不想(?:和你)?发展|不想谈恋爱|不想和你谈恋爱|不想继续认识|不想和你聊|不要再联系|别再联系我|别再问了|别再追我)(?:了|啦|吧|哈)?(?:[，。！？\\s].*)?$"
+    )
     fun mode(snapshot: ChatSnapshot): Mode {
         val others = snapshot.messages.filter { it.side == "other" }.takeLast(3)
+        if (others.lastOrNull()?.let { it.kind in setOf(com.jev.probe.core.MessageKind.TEXT,
+                com.jev.probe.core.MessageKind.VOICE_TRANSCRIPT) && explicitBoundary.matches(it.text.trim()) } == true)
+            return Mode.BOUNDARY
         if (others.any { ReplyVoicePolicy.isStyleComplaint(it.text) }) return Mode.STYLE_FEEDBACK
         val tail = others.joinToString(" ") { it.text }
         return if (Regex("难过|伤心|掉眼泪|想哭|哭了|好委屈|被.{0,4}伤.{0,3}深").containsMatchIn(tail) &&
@@ -17,6 +23,8 @@ internal object ReplyTurnPolicy {
         if (mode == Mode.ORDINARY) ordinary else listOf("natural", "follow_detail", "simple")
 
     fun instruction(mode: Mode, opener: Boolean): String = when {
+        mode == Mode.BOUNDARY -> "对方本轮明确拒绝当前关系方向或要求停止。若用户要回复，只给简短承接的备选，" +
+            "不以新切口继续劝说，不追问、不要求她解释，不擅自宣布当朋友继续聊天。各style此时只代表同一承接态度的不同说法。"
         opener -> "本轮是用户主动重新开场，不是让你替他继续评价最后一屏。fresh_opening 必须换到轻松的新话题；" +
             "只用已有兴趣或一个普通问候，不能编造今天经历。light_callback 只能回扣轻松话题，不能重提前任、创伤、分手、户口或催对方交代；没有合适旧话题就再给一种普通开场。" +
             "资料卡自述不能写成你上次跟我说过，除非聊天原文确实支持。三条最多一条问句，另两条用简单表达兴趣或招呼，不堆问卷。" +
