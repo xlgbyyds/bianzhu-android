@@ -144,7 +144,19 @@ object JevQuestions {
                 "say_less" to ("Keep it short or add nothing. Extra words would over-explain, reopen a closed topic, " +
                     "or pour fuel on an ultimatum that told you not to talk."),
                 "make_plan" to ("Propose or confirm logistics (time, place, task) for a non-conflict request " +
-                    "such as a meal or a meeting.")
+                    "such as a meal or a meeting."),
+                "answer_detail" to ("Answer the actual question or respond to one concrete detail in the latest message; " +
+                    "do not replace the answer with a personality assessment."),
+                "share_related" to ("Add one brief, relevant thought or personal detail that keeps the current topic moving; " +
+                    "do not force a question."),
+                "light_banter" to ("Use a light tease or playful response grounded in an exact, harmless detail and existing rapport; " +
+                    "do not invent a dynamic or joke about a sensitive point."),
+                "express_interest" to ("State a genuine, proportionate interest or preference directly when the conversation supports it; " +
+                    "do not turn it into pressure or a sudden invitation."),
+                "ask_one" to ("Ask one natural, specific, low-pressure question only when a real detail needs clarification " +
+                    "or the other person has invited a follow-up."),
+                "restart_topic" to ("Open a fresh, ordinary topic after the visible exchange has gone stale or closed; " +
+                    "do not pretend an old message just arrived.")
             )
         ))
         put("she_needs", choice(

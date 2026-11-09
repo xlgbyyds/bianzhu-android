@@ -21,8 +21,9 @@ class JevClient(prefs: Prefs,
     fun judge(snapshot: ChatSnapshot, relationship: String, ctx: ChatContext? = null): Analysis =
         judgeClient.judge(snapshot, relationship, ctx)
 
-    fun draft(snapshot: ChatSnapshot, relationship: String, ctx: ChatContext? = null): List<ReplySuggestion> =
-        replyClient.draft(snapshot, relationship, ctx)
+    fun draft(snapshot: ChatSnapshot, relationship: String, ctx: ChatContext? = null,
+              judgment: Analysis? = null): List<ReplySuggestion> =
+        replyClient.draft(snapshot, relationship, ctx, judgment)
 
     fun rank(snapshot: ChatSnapshot, relationship: String, candidates: List<String>,
              ctx: ChatContext? = null): List<RankedReply> =
@@ -45,9 +46,10 @@ class JevClient(prefs: Prefs,
     fun draftAndRank(
         snapshot: ChatSnapshot,
         relationship: String,
-        ctx: ChatContext? = null
+        ctx: ChatContext? = null,
+        judgment: Analysis? = null
     ): List<RankedReply> {
-        val candidates = draft(snapshot, relationship, ctx)
+        val candidates = draft(snapshot, relationship, ctx, judgment)
         val metadata = candidates.associateBy { it.text }
         return rank(snapshot, relationship, candidates.map { it.text }, ctx).map { ranked ->
             val suggestion = metadata[ranked.text]
@@ -59,7 +61,7 @@ class JevClient(prefs: Prefs,
     fun analyze(snapshot: ChatSnapshot, relationship: String, ctx: ChatContext? = null): Analysis {
         val a = judge(snapshot, relationship, ctx)
         if (a.error != null) return a
-        val ranked = try { draftAndRank(snapshot, relationship, ctx) } catch (e: Exception) { emptyList() }
+        val ranked = try { draftAndRank(snapshot, relationship, ctx, a) } catch (e: Exception) { emptyList() }
         return a.copy(rankedReplies = ranked)
     }
 }

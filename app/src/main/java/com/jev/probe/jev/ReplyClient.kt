@@ -1,5 +1,6 @@
 package com.jev.probe.jev
 
+import com.jev.probe.core.Analysis
 import com.jev.probe.core.ChatSnapshot
 import com.jev.probe.core.Prefs
 import com.jev.probe.core.ReplySuggestion
@@ -69,7 +70,8 @@ class ReplyClient(
      *        history are prepended to the prompt with an instruction to stay
      *        consistent with them and invent nothing beyond them.
      */
-    fun draft(snapshot: ChatSnapshot, relationship: String, ctx: ChatContext? = null): List<ReplySuggestion> {
+    fun draft(snapshot: ChatSnapshot, relationship: String, ctx: ChatContext? = null,
+              analysis: Analysis? = null): List<ReplySuggestion> {
         val timeContext = com.jev.probe.core.ConversationTiming.from(snapshot)
         val today = timeContext.current.toLocalDate()
         val pageTime = pageTimeEvidence(snapshot.messages, today)
@@ -92,6 +94,7 @@ class ReplyClient(
             else ReplyStylePolicy.stylesFor(pageAge, prefs.prefersPlayfulReplies() || roleInstruction.isNotBlank()))
         val feedback = prefs.replyFeedbackGuidance()
         val feedbackInstruction = feedback.takeIf { it.isNotBlank() }?.let { "用户明确给过的口味偏好：$it。" }.orEmpty()
+        val decisionGuidance = ReplyDecisionGuide.prompt(analysis)
         val sys = "你是中文即时通讯回复助手。只输出 JSON 对象：{\"replies\":[{\"style\":\"...\",\"text\":\"...\"}]}。" +
             "必须恰好给出 3 条，每条使用指定 style，style 不可重复；程序会显示风格并本地说明依据。" +
             ReplyPolicy.NATURAL_VOICE + ReplyPolicy.LISTENING_AND_CONTINUITY +
@@ -106,6 +109,7 @@ class ReplyClient(
             "不要探问她现在的位置、是否在床上、姿势、穿着、住址、收入或感情史等私密信息。" +
             "已审核档案中的后续聊天方向只是长期参考；当前候选必须先自然回应眼前可见消息，不要为套用方向而突然转题。" +
             delayedGuidance +
+            decisionGuidance +
             feedbackInstruction +
             "style 的取值必须从本轮指定的三个标签中逐字选择；不要输出分析过程。" + roleInstruction
         val user = knowledgeBlock(relationship, ctx) +
@@ -383,4 +387,52 @@ internal object ReplyStylePolicy {
     fun stylesFor(ageDays: Long?, preferPlayful: Boolean = false): List<String> = if (isDelayed(ageDays))
         listOf("restart", "resume_topic", "share_now")
     else listOf("natural", "follow_detail", if (preferPlayful) "playful" else "simple")
+}
+
+/** Converts Jev's completed judgment into a short, non-factual writing direction for the draft model. */
+internal object ReplyDecisionGuide {
+    private val intent = mapOf(
+        "confirm_you_care" to "可能在确认我是否记得或在乎",
+        "vent_anger" to "在表达不满或受伤",
+        "request_action" to "需要一个具体行动或答复",
+        "seek_explanation" to "在要事实说明",
+        "casual_chat" to "普通分享、玩笑或轻松交流",
+        "close_topic" to "话题可能已经收尾"
+    )
+    private val need = mapOf(
+        "apology" to "需要真诚道歉",
+        "action" to "需要具体行动或安排",
+        "explanation" to "需要清楚解释",
+        "care" to "需要看到我有在听和在乎",
+        "nothing" to "目前不需要补充内容"
+    )
+    private val action = mapOf(
+        "check_history" to "先核对旧记录",
+        "apologize" to "为已确认的错误道歉",
+        "give_commitment" to "给出明确承诺",
+        "explain" to "解释已知事实",
+        "acknowledge" to "简短接住她说的内容",
+        "say_less" to "少说或先停",
+        "make_plan" to "落实已有请求中的安排",
+        "answer_detail" to "直接回答问题或回应一个具体细节",
+        "share_related" to "补充一个相关想法或自己的小细节",
+        "light_banter" to "围绕无害的具体细节轻松接梗",
+        "express_interest" to "自然表达真实兴趣",
+        "ask_one" to "确有需要时问一个具体问题",
+        "restart_topic" to "换个自然的新话题"
+    )
+
+    fun prompt(analysis: Analysis?): String {
+        if (analysis == null || analysis.error != null) return ""
+        val choices = listOf(analysis.trueIntent, analysis.sheNeeds, analysis.bestAction).filterNotNull()
+        val parts = listOfNotNull(
+            analysis.trueIntent?.let { intent[it.choice]?.let { label -> "对方这句可能是在：$label" } },
+            analysis.sheNeeds?.let { need[it.choice]?.let { label -> "眼下更需要：$label" } },
+            analysis.bestAction?.let { action[it.choice]?.let { label -> "建议回复方向：$label" } }
+        )
+        if (parts.isEmpty()) return ""
+        val caution = if (choices.any { it.confidence < 0.55 }) "其中有低把握判断，以聊天原话为准。" else ""
+        return "Jev本轮推测，只作为写作方向，不当作对方事实：${parts.joinToString("；")}。$caution" +
+            "先回应可确认的原话；不要把这些判断写成对她的评价或复述给她。"
+    }
 }

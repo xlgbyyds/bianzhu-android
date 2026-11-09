@@ -2002,11 +2002,13 @@ open class ChatCaptureService : AccessibilityService() {
             if (analyzing && !draftFinished && isCurrent(token))
                 overlay?.showProgress(if (judgmentFinished)
                     "判断已返回，回复草稿仍在生成；网络慢时请稍候…"
-                else "判断和回复草稿仍在生成；网络慢时请稍候…")
+                else "正在等待 Jev 判断；完成后接着生成回复草稿…")
         }, 10_000L)
         main.postDelayed({
             if (analyzing && !draftFinished && isCurrent(token))
-                overlay?.showProgress("已等待 20 秒，回复草稿仍在生成；请保持当前会话打开。")
+                overlay?.showProgress(if (judgmentFinished)
+                    "已等待 20 秒，回复草稿仍在生成；请保持当前会话打开。"
+                else "已等待 20 秒，Jev 判断仍在进行；完成后会继续生成回复草稿。")
         }, 20_000L)
         main.postDelayed({
             if (analyzing && isCurrent(token)) {
@@ -2080,25 +2082,27 @@ open class ChatCaptureService : AccessibilityService() {
                 )
                 activeDelivery = delivery
                 submitAnalysis {
-                    val started = android.os.SystemClock.elapsedRealtime()
+                    val judgeStarted = android.os.SystemClock.elapsedRealtime()
                     val judgment = client.judge(snapshot, effectiveRel, ctx)
-                    Log.i(TAG, "timing judge=${android.os.SystemClock.elapsedRealtime() - started}ms success=${judgment.error == null}")
+                    val judgeMs = android.os.SystemClock.elapsedRealtime() - judgeStarted
+                    Log.i(TAG, "timing judge=$judgeMs ms success=${judgment.error == null}")
                     main.post {
                         if (isCurrent(token)) {
                             judgmentFinished = true
-                            RuntimeState.recordAction(this, if (judgment.error == null) "判断已返回" else "判断暂不可用，继续等待回复初稿")
+                            RuntimeState.recordAction(this, if (judgment.error == null)
+                                "判断已返回，正在按判断方向起草" else "判断暂不可用，继续生成普通初稿")
                             delivery.judgmentReceived(judgment)
                         }
                     }
-                }
-                submitAnalysis {
                     var error: String? = null
                     val started = android.os.SystemClock.elapsedRealtime()
-                    val drafts = try { client.draft(snapshot, effectiveRel, ctx) } catch (e: Exception) {
+                    val drafts = try {
+                        client.draft(snapshot, effectiveRel, ctx, judgment.takeIf { it.error == null })
+                    } catch (e: Exception) {
                         error = e.message ?: e.javaClass.simpleName
                         emptyList()
                     }
-                    Log.i(TAG, "timing draft=${android.os.SystemClock.elapsedRealtime() - started}ms count=${drafts.size}")
+                    Log.i(TAG, "timing draft=${android.os.SystemClock.elapsedRealtime() - started}ms afterJudge=${judgeMs}ms count=${drafts.size}")
                     main.post {
                         if (isCurrent(token)) {
                             draftFinished = true

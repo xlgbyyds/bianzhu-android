@@ -1273,6 +1273,8 @@ class OverlayController(private val ctx: Context) {
         private val ACTION = mapOf(
             "check_history" to "翻聊天记录", "apologize" to "先道歉", "give_commitment" to "给承诺",
             "explain" to "解释清楚", "acknowledge" to "接住情绪", "say_less" to "少说两句",
-            "make_plan" to "定个安排")
+            "make_plan" to "定个安排", "answer_detail" to "回应具体内容", "share_related" to "补充相关想法",
+            "light_banter" to "轻松接梗", "express_interest" to "表达兴趣", "ask_one" to "问一个具体问题",
+            "restart_topic" to "换个自然话题")
     }
 }
