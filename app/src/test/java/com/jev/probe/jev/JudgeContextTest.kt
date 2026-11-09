@@ -109,4 +109,31 @@ class JudgeContextTest {
         val result = client.rank(snapshot, "朋友", listOf("第一条", "第二条"))
         assertEquals(listOf("第二条", "第一条"), result.map { it.text })
     }
+
+    @Test fun rankingReceivesBothSavedVoiceAndExplicitStyleFeedback() {
+        val prefs = Prefs(RuntimeEnvironment.getApplication(), "rank-style-guidance")
+        prefs.clearReplyFeedback()
+        prefs.rememberReplyFeedback("less_ai")
+        val context = ChatContext(null, emptyList(), emptyList(), replyVoiceGuidance = "联系人确认过的短句口吻")
+        val client = JudgeClient(prefs) { _, _, body ->
+            val background = body.getJSONObject("state").getString("background")
+            assertTrue(background.contains("联系人确认过的短句口吻"))
+            assertTrue(background.contains(prefs.replyFeedbackGuidance()))
+            JSONObject().put("answers", JSONObject().put("best_reply", JSONObject()
+                .put("choice", "reply_a").put("probabilities", JSONObject().put("reply_a", 1.0))))
+        }
+        assertEquals("第一条", client.rank(snapshot, relation, listOf("第一条"), context).single().text)
+    }
+
+    @Test fun unknownLatestSpeakerIsPreservedWithoutAssigningThemToEitherSide() {
+        val state = JevQuestions.buildState(ChatSnapshot("测试联系人", listOf(
+            Msg("other", "前一条对方消息"), Msg("unknown", "最新但身份不明的消息")
+        )), "关系未知")
+        val chat = state.getJSONObject("chat")
+        assertEquals("unknown", chat.getString("latest_from"))
+        assertEquals("other", chat.getJSONArray("messages").getJSONObject(0).getString("from"))
+        assertEquals(1, chat.getJSONArray("messages").length())
+        assertTrue(state.getString("background").contains("发言者不确定"))
+        assertTrue(state.getString("background").contains("最新但身份不明的消息"))
+    }
 }

@@ -72,7 +72,9 @@ class JudgeClient(private val prefs: Prefs,
     ): List<RankedReply> {
         val questions = JSONObject().put("best_reply",
             JevQuestions.rankQuestion(candidates).getJSONObject("best_reply"))
-        val answers = postDecisions(snapshot, relationship, ctx, questions, ctx?.replyVoiceGuidance.orEmpty())
+        val styleGuidance = listOf(ctx?.replyVoiceGuidance.orEmpty(), prefs.replyFeedbackGuidance())
+            .filter(String::isNotBlank).joinToString("\n")
+        val answers = postDecisions(snapshot, relationship, ctx, questions, styleGuidance)
         return parseRanked(answers.optJSONObject("best_reply"), candidates)
     }
 

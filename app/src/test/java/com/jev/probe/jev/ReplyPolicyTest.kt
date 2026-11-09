@@ -74,6 +74,13 @@ class ReplyPolicyTest {
         assertTrue(result.single().contains("一起吃饭"))
     }
 
+    @Test fun casualOfferToShareSomethingIsNotFilteredAsADateInvitation() {
+        assertEquals(listOf("有空我把那份游戏攻略发你"),
+            ReplyPolicy.safe(listOf("有空我把那份游戏攻略发你"), "哈哈"))
+        assertTrue(ReplyPolicy.safe(listOf("周末有空一起吃饭吗"), "哈哈").isEmpty())
+        assertTrue(ReplyPolicy.safe(listOf("那周末见一面吗"), "哈哈").isEmpty())
+    }
+
     @Test fun suggestionsUseSpacesWithoutPunctuationAndKeepStyleMetadata() {
         val result = ReplyPolicy.safeSuggestions(listOf(
             ReplySuggestion("哈哈，  被你发现了！\n下次还敢。", "playful", "原来的依据"),

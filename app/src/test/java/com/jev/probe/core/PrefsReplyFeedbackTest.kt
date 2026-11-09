@@ -26,4 +26,10 @@ class PrefsReplyFeedbackTest {
         prefs.clearReplyFeedback()
         assertFalse(prefs.replyFeedbackGuidance().isNotBlank())
     }
+
+    @Test fun unsetGlobalRelationshipDoesNotAssumeEveryPersonIsAPartner() {
+        val context = RuntimeEnvironment.getApplication()
+        context.getSharedPreferences("relationship-default-test", 0).edit().clear().commit()
+        assertTrue(Prefs(context, "relationship-default-test").relationship.contains("关系尚未确认"))
+    }
 }

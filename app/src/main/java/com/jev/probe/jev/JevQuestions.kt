@@ -198,6 +198,14 @@ object JevQuestions {
     ): JSONObject {
         val msgs = JSONArray()
         val last10 = snapshot.messages.filter { it.side == "me" || it.side == "other" }.takeLast(10)
+        val latestVisible = snapshot.messages.lastOrNull()
+        val uncertainLatest = latestVisible?.takeIf { it.side != "me" && it.side != "other" }
+        val stateBackground = listOf(
+            background,
+            uncertainLatest?.let {
+                "最近可见的一条消息发言者不确定，不能归给我或对方；只可将正文当作未归属的上下文：${it.modelText()}"
+            }
+        ).filterNotNull().filter(String::isNotBlank).joinToString("\n")
         for ((index, m) in last10.withIndex()) {
             val dateContext = if (index == last10.lastIndex)
                 "[${com.jev.probe.core.ConversationTiming.from(snapshot).prompt()} 用户选择现在分析，可接续旧消息] " else ""
@@ -206,9 +214,13 @@ object JevQuestions {
         val chat = JSONObject()
             .put("relationship", relationship)
             .put("messages", msgs)
-            .put("latest_from", last10.lastOrNull()?.side ?: "other")
+            .put("latest_from", when {
+                uncertainLatest != null -> "unknown"
+                last10.isNotEmpty() -> last10.last().side
+                else -> "unknown"
+            })
         val state = JSONObject().put("chat", chat)
-        if (background.isNotBlank()) state.put("background", background)
+        if (stateBackground.isNotBlank()) state.put("background", stateBackground)
         val knownHistory = history.filter { it.side == "me" || it.side == "other" }
         if (knownHistory.isNotEmpty()) {
             val h = JSONArray()

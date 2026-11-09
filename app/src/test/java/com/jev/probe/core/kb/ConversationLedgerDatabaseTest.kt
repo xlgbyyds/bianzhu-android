@@ -53,6 +53,16 @@ class ConversationLedgerDatabaseTest {
         assertEquals(5, ledger.lineCount("contact"))
     }
 
+    @Test fun relevantRetrievalSearchesRecentPagesAndKeepsTheAdjacentConversationTurn() {
+        val page = listOf(msg("me", "我最近开始学摄影了"), msg("other", "周末去江边拍照"),
+            msg("me", "拍完记得发我看看"))
+        assertTrue(ledger.record("contact", app, ChatSnapshot("同一个名字", page), false))
+        val result = ledger.relevant("contact", app,
+            ChatSnapshot("同一个名字", listOf(msg("other", "江边"))), 6)
+        assertEquals(listOf("我最近开始学摄影了", "周末去江边拍照", "拍完记得发我看看"), result.map { it.text })
+        assertFalse(result.any { it.historical })
+    }
+
     @Test fun shortButDistinctiveAdjacentPairDoesNotGrowAcrossSplitWindows() {
         val pair = listOf(msg("me", "这句话就有点意思了"), msg("me", "那可不嘛"))
         save(pair + msg("other", "哈哈哈"))

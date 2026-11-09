@@ -46,7 +46,7 @@ class ReplyVoiceFeedbackTest {
         val id = "feedback-scope"
         kb.saveContact(Contact(id, "反馈测试", apps = listOf(app), memoryEnabled = true))
         ledger.record(id, app, ChatSnapshot("反馈测试", listOf(
-            Msg("me", "说到底还是不够成熟"), Msg("other", "你讲话真像豆包"))), true)
+            Msg("me", "说到底还是不够成熟"), Msg("other", "你讲话真像豆包"))), false)
         assertTrue(ledger.hasRecentStyleComplaint(id, app))
         assertFalse(ledger.hasRecentStyleComplaint("someone-else", app))
         assertFalse(ledger.hasRecentStyleComplaint(id, "another.app"))
@@ -76,4 +76,15 @@ class ReplyVoiceFeedbackTest {
         assertEquals(before, ledger.totalLineCount())
         assertTrue(ledger.ownExpressions(id, app).contains("看来你的品味一直挺好"))
     }
+    @Test fun oldBackfilledStyleComplaintDoesNotRemainAnActiveRecentPreference() {
+        val context = RuntimeEnvironment.getApplication()
+        val ledger = ConversationLedger.get(context)
+        val app = "test.old.feedback.app"
+        val id = "old-feedback-scope"
+        ledger.record(id, app, ChatSnapshot("???", listOf(
+            Msg("other", "???????", visibleTime = "2024?1?1? 10:00")
+        )), true)
+        assertFalse(ledger.hasRecentStyleComplaint(id, app))
+    }
+
 }

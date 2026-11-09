@@ -512,17 +512,30 @@ class ConversationLedger internal constructor(context: Context) :
     }
 
     /** Bounded and app/contact scoped; does not mutate history or send another request. */
-    fun hasRecentStyleComplaint(contactId: String, app: String): Boolean =
-        readableDatabase.rawQuery("""SELECT side,body FROM (
-            SELECT l.side,l.body FROM capture c JOIN line l ON l.capture_id=c.id
+    fun hasRecentStyleComplaint(contactId: String, app: String,
+                                now: Long = System.currentTimeMillis(), maxAgeDays: Long = 30): Boolean {
+        val today = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        val cutoff = now - maxAgeDays.coerceAtLeast(0) * 86_400_000L
+        return readableDatabase.rawQuery("""SELECT side,body,visible_time,observed_at,historical FROM (
+            SELECT l.side,l.body,l.visible_time,c.observed_at,c.historical,c.id,l.ordinal
+            FROM capture c JOIN line l ON l.capture_id=c.id
             WHERE c.contact_id=? AND c.app=? AND l.kind IN ('TEXT','VOICE_TRANSCRIPT')
             ORDER BY c.id DESC,l.ordinal DESC LIMIT 500)
             WHERE side='other'""", arrayOf(contactId, app)).use { c ->
             var found = false
-            while (c.moveToNext() && !found)
-                found = com.jev.probe.core.ReplyVoicePolicy.isStyleComplaint(c.getString(1))
+            while (c.moveToNext() && !found) {
+                if (!com.jev.probe.core.ReplyVoicePolicy.isStyleComplaint(c.getString(1))) continue
+                val visible = if (c.isNull(2)) null else c.getString(2)
+                val historical = c.getInt(4) != 0
+                val hasExplicitYear = visible?.contains(Regex("\\d{4}年")) == true
+                val day = if (historical && !hasExplicitYear) null
+                    else MessageTimeEvidence.parts(visible, c.getLong(3)).day
+                found = if (day != null) !day.isAfter(today) && !day.isBefore(today.minusDays(maxAgeDays.coerceAtLeast(0)))
+                    else !historical && c.getLong(3) >= cutoff
+            }
             found
         }
+    }
 
     /** Read a bounded sample of this person's own messages, including backfill; no extra model call. */
     fun ownExpressions(contactId: String, app: String): List<String> {
@@ -555,29 +568,44 @@ class ConversationLedger internal constructor(context: Context) :
         return (varied + sorted).map { it.text }.distinct().take(8)
     }
 
-    /** Bounded older-page search; never scans the whole growing ledger. */
+    /** Bounded retrieval across live and backfilled pages, with neighboring turns. */
     fun relevant(contactId: String, app: String, snapshot: ChatSnapshot, limit: Int): List<LogEntry> {
         if (limit <= 0) return emptyList()
         val query = grams(snapshot.messages.takeLast(4).joinToString(" ") { it.text })
         if (query.isEmpty()) return emptyList()
-        val hits = ArrayList<Pair<Int, LogEntry>>()
+        data class Candidate(val captureId: Long, val ordinal: Int, val entry: LogEntry, val score: Int)
+        val candidates = ArrayList<Candidate>()
         readableDatabase.rawQuery("""SELECT l.side,l.kind,l.body,l.visible_time,l.time_confidence,
-            c.observed_at,c.app,c.page_keys,l.ordinal FROM line l JOIN capture c ON c.id=l.capture_id
-            WHERE c.contact_id=? AND c.app=? AND c.historical=1
+            c.observed_at,c.app,c.page_keys,l.ordinal,c.historical,c.id FROM line l JOIN capture c ON c.id=l.capture_id
+            WHERE c.contact_id=? AND c.app=?
             ORDER BY c.id DESC,l.ordinal DESC LIMIT 2000""", arrayOf(contactId, app)).use { c ->
             while (c.moveToNext()) {
                 val body = c.getString(2)
                 val score = grams(body).count { it in query }
-                if (score > 0) hits.add(score to LogEntry(
-                    c.getString(0), body, c.getLong(5), c.getString(6),
+                val entry = LogEntry(c.getString(0), body, c.getLong(5), c.getString(6),
                     c.getString(1), interpretedTime(c.getString(0), c.getString(1), body,
-                        if (c.isNull(3)) null else c.getString(3), c.getString(7), c.getInt(8), c.getLong(5)), c.getString(4), true))
+                        if (c.isNull(3)) null else c.getString(3), c.getString(7), c.getInt(8), c.getLong(5)),
+                    c.getString(4), c.getInt(9) != 0)
+                candidates.add(Candidate(c.getLong(10), c.getInt(8), entry, score))
             }
         }
-        return hits.sortedWith(compareByDescending<Pair<Int, LogEntry>> { it.first }
-            .thenByDescending { it.second.ts })
-            .distinctBy { (_, entry) -> listOf(entry.side, entry.kind, entry.text, entry.visibleTime) }
-            .take(limit).map { it.second }.sortedBy { it.ts }
+        candidates.reverse()
+        val selected = linkedSetOf<Int>()
+        val hits = candidates.indices.filter { candidates[it].score > 0 }
+            .sortedWith(compareByDescending<Int> { candidates[it].score }.thenByDescending { it })
+        for (hit in hits) {
+            val page = candidates[hit].captureId
+            val neighbors = listOf(hit - 1, hit, hit + 1).filter { index ->
+                index in candidates.indices && candidates[index].captureId == page
+            }.sorted()
+            for (index in neighbors) {
+                if (selected.size >= limit) break
+                selected.add(index)
+            }
+            if (selected.size >= limit) break
+        }
+        return selected.sorted().map { candidates[it].entry }
+            .distinctBy { listOf(it.side, it.kind, it.text, it.visibleTime) }
     }
 
     fun lineCount(contactId: String): Int = readableDatabase.rawQuery(

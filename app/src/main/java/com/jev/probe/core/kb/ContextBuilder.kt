@@ -56,6 +56,7 @@ object ContextBuilder {
         val profile = contact?.relationshipProfiles?.get(app)
 
         // 2. History — recorded and injected only with the user's opt-in.
+        var priorityHistory: Set<LogEntry> = emptySet()
         val history = when {
             contact?.memoryEnabled == true && contact.apps.contains(app) -> {
                 val ledger = ConversationLedger.get(context)
@@ -65,9 +66,11 @@ object ContextBuilder {
                 else emptyList()
                 val related = ledger.relevant(contact.id, app, snapshot, minOf(6, n / 3))
                     .filterNot { old -> snapshot.messages.any { now ->
-                        now.side == old.side && now.kind.name == old.kind && now.text == old.text } }
+                        now.side == old.side && now.kind.name == old.kind && now.text == old.text &&
+                            (now.visibleTime == null || now.visibleTime == old.visibleTime) } }
                 val recent = trimVisibleTail(ledger.recent(contact.id, app,
                     n + snapshot.messages.size), snapshot)
+                priorityHistory = related.toSet()
                 legacy + related + recent.takeLast((n - legacy.size - related.size).coerceAtLeast(0))
             }
             else -> emptyList()
@@ -78,12 +81,14 @@ object ContextBuilder {
         val alwaysOn = enabled.filter { it.alwaysOn }
         val hits = matchNotes(enabled.filter { !it.alwaysOn }, snapshot)
 
-        // 4. Budget: always-on notes are exempt; the rest share BUDGET_CHARS,
-        //    dropping oldest history first, then whole notes (never half a note).
+        // 4. Budget: always-on notes are exempt. Keep a relevant retrieved turn
+        //    before unrelated recency when the same budget cannot hold both.
         val trimmedHistory = ArrayList(history)
         val trimmedHits = ArrayList(hits)
-        while (cost(trimmedHits, trimmedHistory) > BUDGET_CHARS && trimmedHistory.isNotEmpty())
-            trimmedHistory.removeAt(0)
+        while (cost(trimmedHits, trimmedHistory) > BUDGET_CHARS && trimmedHistory.isNotEmpty()) {
+            val unrelated = trimmedHistory.indexOfFirst { it !in priorityHistory }
+            trimmedHistory.removeAt(if (unrelated >= 0) unrelated else 0)
+        }
         while (cost(trimmedHits, trimmedHistory) > BUDGET_CHARS && trimmedHits.isNotEmpty())
             trimmedHits.removeAt(trimmedHits.size - 1)
 
