@@ -95,12 +95,24 @@ class ReplyClient(
         val feedback = prefs.replyFeedbackGuidance()
         val feedbackInstruction = feedback.takeIf { it.isNotBlank() }?.let { "用户明确给过的口味偏好：$it。" }.orEmpty()
         val decisionGuidance = ReplyDecisionGuide.prompt(analysis)
+        // Ordinary chat is where the "too complete" tell shows up: my own log sends something
+        // under 10 characters in about half of all messages. The third slot exists to be that.
+        val simpleRule = if (turnMode == ReplyTurnPolicy.Mode.ORDINARY)
+            "simple 只给半个反应 不超过 8 个字 可以只是 哈哈 行 这就去 确实 这种 不提问 不补充新信息 " +
+                "不解释 不写安慰句 情绪要贴本轮 她难受时不要哈哈哈；"
+        else "simple 平实短回 不总结不抖机灵；"
         val sys = "你是中文即时通讯回复助手。只输出 JSON 对象：{\"replies\":[{\"style\":\"...\",\"text\":\"...\"}]}。" +
             "必须恰好给出 3 条，每条使用指定 style，style 不可重复；程序会显示风格并本地说明依据。" +
             ReplyPolicy.NATURAL_VOICE + ReplyPolicy.LISTENING_AND_CONTINUITY +
-            "natural 直接接话；follow_detail 接同一轮里与当前话题直接相关的细节，不为凑差异跳回已经结束的旧话题，也不等于必须追问；simple 平实短回 不总结不抖机灵；指定 playful 时也仅在合适时轻逗，没有合适语境就给另一种平实回应。不要为凑标签硬撩。" +
+            "natural 直接接话；follow_detail 接同一轮里与当前话题直接相关的细节，不为凑差异跳回已经结束的旧话题，也不等于必须追问；" +
+            simpleRule +
+            "指定 playful 时也仅在合适时轻逗，没有合适语境就给另一种平实回应。不要为凑标签硬撩。" +
             "不要每条都用问句；需要提问时每条最多一个，且只能问轻松公开的话题。" +
-            "每条不超过 40 字，口语、自然、像真人在聊天软件里发消息。" + ReplyPolicy.WRITING_STYLE + ReplyPolicy.SPEAKER_AND_REFERENCE_GUIDANCE +
+            "每条不超过 40 字，口语、自然、像真人在聊天软件里发消息。" +
+            // Emotes only belong in ordinary chat; hurt, boundary and style-feedback turns
+            // must stay plain, so the mandatory-emote rule is scoped to ORDINARY.
+            (if (turnMode == ReplyTurnPolicy.Mode.ORDINARY) ReplyPolicy.EMOTE_GUIDANCE else "") +
+            ReplyPolicy.WRITING_STYLE + ReplyPolicy.SPEAKER_AND_REFERENCE_GUIDANCE +
             "用户现在选择回复，即使页面显示的是旧消息也可以自然接续话题。" +
             "不要把旧消息说成刚刚收到，不要编造迟回原因（例如当时忙或没兴趣），" +
             "也不要编造对方当时的心情或我未提供的共同经历。" +
@@ -153,7 +165,10 @@ class ReplyClient(
             else "恰好给出三条不同开场，每条使用一个指定 style，不重复；fresh_opening 是自然新开场，light_callback 是轻轻回扣旧话题，simple 是普通招呼或直接表达想聊；指定 playful 时有语境才轻逗，没有合适细节就给平实开场。至少一条脱离当前屏幕上已经收尾的旧话题，不能三条换着说同一件事。新开场不能继续盘问过时的安排；回扣只选未过期的共同话题，已经收尾的话题不原样接续。倾诉过的创伤和前任经历不作为破冰素材，除非对方本轮主动继续说。无旧话题时回扣项也用自然破冰，不编造记忆。") +
             "亲近程度必须服从实际关系，陌生人不装熟，不能为了风格标签强行暧昧。" +
             "已经聊热的人用具体共同话题，不默认发送情绪安慰或恋爱宣言。只有哈喽或表情时，不评价她性格，不调侃她回复短，不硬编默契；给一句容易接住的普通话即可。" +
-            "每条不超过35字，像真人发消息，不油腻、不冒犯、不虚构共同经历。" + ReplyPolicy.WRITING_STYLE + ReplyPolicy.SPEAKER_AND_REFERENCE_GUIDANCE +
+            "每条不超过35字，像真人发消息，不油腻、不冒犯、不虚构共同经历。" +
+            // Cold openers stay plain; only chats that already exist get the emote slot.
+            (if (familiar) ReplyPolicy.EMOTE_GUIDANCE else "") +
+            ReplyPolicy.WRITING_STYLE + ReplyPolicy.SPEAKER_AND_REFERENCE_GUIDANCE +
             "没有可靠资料卡事实时不要猜职业、爱好、住址、照片内容或对方心情。" +
             "旧聊天的采集时间不是发送时间，不要说刚刚看到旧消息。" +
             "不能从旧对话推断今天的天气、对方今天上班，或我已经忙完、到家、吃完等当前状态；没有当日明确证据就不写这些断言。" +
@@ -216,11 +231,16 @@ class ReplyClient(
     }
 
     /** Local preference only; keep all valid candidates and do not add a rewrite request. */
-    private fun preferConcrete(suggestions: List<ReplySuggestion>, snapshot: ChatSnapshot): List<ReplySuggestion> =
-        ReplyExpressionQuality.preferConcrete(ReplyPolicy.withGroundedCurrentFacts(suggestions, snapshot),
-            snapshot.messages.filter { it.side == "other" && it.kind in setOf(
-                com.jev.probe.core.MessageKind.TEXT, com.jev.probe.core.MessageKind.VOICE_TRANSCRIPT)
-            }.takeLast(3).map { it.text })
+    private fun preferConcrete(suggestions: List<ReplySuggestion>, snapshot: ChatSnapshot): List<ReplySuggestion> {
+        val recentOther = snapshot.messages.filter { it.side == "other" && it.kind in setOf(
+            com.jev.probe.core.MessageKind.TEXT, com.jev.probe.core.MessageKind.VOICE_TRANSCRIPT)
+        }.takeLast(3).map { it.text }
+        // Deterministic output shaping: drop a leading restatement of what she just said
+        // before ranking, so prompt non-compliance cannot surface an echo to the user.
+        val stripped = ReplyPolicy.stripKnownEcho(suggestions, recentOther)
+        return ReplyExpressionQuality.preferConcrete(
+            ReplyPolicy.withGroundedCurrentFacts(stripped, snapshot), recentOther)
+    }
 
     /** The background + history preamble; empty string when there is no context. */
     private fun knowledgeBlock(relationship: String, ctx: ChatContext?): String {

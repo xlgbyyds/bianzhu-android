@@ -23,6 +23,27 @@ class ReplyConcreteContentTest {
         assertFalse(prefs.prefersPlayfulReplies())
     }
 
+    @Test fun draftRemovesTheKnownInformationEchoFromRealModelOutput() {
+        val prefs = Prefs(RuntimeEnvironment.getApplication(), "known-echo-draft")
+        val client = ReplyClient(prefs) { _, _, _ ->
+            val rows = JSONArray()
+            val styles = listOf("natural", "follow_detail", "simple")
+            listOf("感冒了啊 多喝热水 吃药了没", "感冒了啊 要不要我给你带点药",
+                "感冒了就别熬夜了").forEachIndexed { i, text ->
+                rows.put(JSONObject().put("style", styles[i]).put("text", text))
+            }
+            JSONObject().put("choices", JSONArray().put(JSONObject().put("message",
+                JSONObject().put("content", JSONObject().put("replies", rows).toString()))))
+        }
+        val snapshot = ChatSnapshot("测试", listOf(Msg("other", "我感冒了")))
+        val result = client.draft(snapshot, "朋友")
+        assertTrue(result.isNotEmpty())
+        assertTrue(result.toString(), result.none { it.text.contains("感冒了啊") })
+        assertEquals("多喝热水 吃药了没", result.first().text)
+        // A genuine continuation that happens to start with the same words stays intact.
+        assertTrue(result.any { it.text == "感冒了就别熬夜了" })
+    }
+
     @Test fun replyAndOpenerUseOneRequestAndKeepConcreteChoiceFirst() {
         val prefs = Prefs(RuntimeEnvironment.getApplication(), "concrete-content")
         for (opener in listOf(false, true)) {

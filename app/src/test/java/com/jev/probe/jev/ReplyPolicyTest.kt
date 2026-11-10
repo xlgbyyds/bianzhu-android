@@ -104,4 +104,68 @@ class ReplyPolicyTest {
         assertEquals(listOf("今天开心", "后来呢", "这句 有点意思"), result)
         assertTrue(result.none { Regex("\\p{P}").containsMatchIn(it) })
     }
+
+    @Test fun knownInformationEchoIsRemovedBeforeFormatting() {
+        val other = listOf("我感冒了")
+        assertEquals("多喝热水 吃药了没",
+            ReplyPolicy.stripKnownEcho("感冒了啊 多喝热水 吃药了没", other))
+        assertEquals("多喝热水",
+            ReplyPolicy.stripKnownEcho("你感冒了啊 多喝热水", other))
+        assertEquals("多喝热水 吃药了没",
+            ReplyPolicy.stripKnownEcho("我感冒了啊 多喝热水 吃药了没", other))
+        assertEquals("吃药了没？",
+            ReplyPolicy.stripKnownEcho("感冒了啊，吃药了没？", other))
+        assertEquals("吃药了没",
+            ReplyPolicy.stripKnownEcho("感冒了啊 吃药了没", listOf("刚才在开会", "我感冒了")))
+    }
+
+    @Test fun naturalContinuationAfterARepeatedDetailIsNotStripped() {
+        val other = listOf("我感冒了", "社长选的")
+        listOf("感冒还上班啊", "感冒了就别熬夜", "社长选的哪一首",
+            "社长选的这首我也喜欢", "社长选的", "感冒了啊", "嗯")
+            .forEach { assertEquals(it, ReplyPolicy.stripKnownEcho(it, other)) }
+    }
+
+    @Test fun noEchoOrEmptyContextLeavesTheReplyUntouched() {
+        val text = "我晚点给你带点药"
+        assertEquals(text, ReplyPolicy.stripKnownEcho(text, emptyList()))
+        assertEquals(text, ReplyPolicy.stripKnownEcho(text, listOf("今天好热")))
+        assertEquals("", ReplyPolicy.stripKnownEcho("", listOf("我感冒了")))
+    }
+
+    @Test fun echoStrippingKeepsStyleAndReasonAndSurvivesSafeSuggestions() {
+        val original = ReplySuggestion("感冒了啊 多喝热水", "natural", "依据一")
+        val stripped = ReplyPolicy.stripKnownEcho(listOf(original), listOf("我感冒了"))
+        assertEquals("多喝热水", stripped.single().text)
+        assertEquals("natural", stripped.single().style)
+        assertEquals("依据一", stripped.single().reason)
+        val result = ReplyPolicy.safeSuggestions(stripped, "我感冒了")
+        assertEquals("多喝热水", result.single().text)
+        assertEquals("natural", result.single().style)
+    }
+
+    // The chat log carries a WeChat emote in about one of every ten lines I actually sent,
+    // while Jev never emitted one because the punctuation strip ate the brackets.
+    @Test fun knownWechatEmoteSurvivesPunctuationStripping() {
+        assertEquals("[旺柴] 行", ReplyPolicy.format("[旺柴] 行"))
+        assertEquals("行吧[捂脸][捂脸]", ReplyPolicy.format("行吧[捂脸][捂脸]"))
+        assertEquals("今天好累[皱眉] 先睡了", ReplyPolicy.format("今天好累[皱眉] 先睡了"))
+        assertEquals("[呲牙]", ReplyPolicy.format("[呲牙]"))
+    }
+
+    @Test fun inventedBracketGroupIsDroppedInsteadOfLeakingItsText() {
+        assertEquals("看见 了", ReplyPolicy.format("看见[注意]了"))
+        assertEquals("行", ReplyPolicy.format("[胡编的表情]行"))
+        assertEquals("", ReplyPolicy.format("[不存在的]"))
+    }
+
+    @Test fun emoteSurvivesTheFullSafePipeline() {
+        val result = ReplyPolicy.safe(listOf("[捂脸] 又来", "哈哈[呲牙]"), "今天又加班")
+        assertEquals(listOf("[捂脸] 又来", "哈哈[呲牙]"), result)
+    }
+
+    @Test fun questionAndPunctuationRulesStillHoldAroundAnEmote() {
+        assertEquals("后来呢[吃瓜]", ReplyPolicy.format("后来呢？[吃瓜]"))
+        assertEquals("[破涕为笑] 没事", ReplyPolicy.format("[破涕为笑]，没事。"))
+    }
 }

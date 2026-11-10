@@ -17,6 +17,13 @@ internal object ReplyPolicy {
         "不要为具体而编细节、经历、承诺，也不把每次吐槽变成解决方案或追问。那、这、确实、真是可以自然使用；问题在整句是否空泛，不是单字。" +
         "三条是互斥备选，每条独立成立；有合适角度才变化，不为凑风格制造夸赞、金句或反转。轻逗只接已有细节，不拿痛处造梗。" +
         "历史发过不等于好范文；只学用词句长，不复制事实、亲密称呼和反复出现的夸赞安慰套路。输出前删掉复述和漂亮结尾，留下真正想对她说的那一句。"
+    // Real WeChat messages carry an emote in about one of every ten lines. Measured against
+    // deepseek: "可以偶尔" produced zero emotes in 6/6 batches, "必须有一条" produced one in
+    // 4/4 and picked a mood-appropriate name, so the guidance has to be mandatory to bite.
+    const val EMOTE_GUIDANCE =
+        "三条里必须有一条带一个微信表情 直接写方括号 例如 [捂脸] [旺柴] [吃瓜] [呲牙] [破涕为笑] " +
+            "方括号表情不算标点 不受上面不用标点那条限制 不用自己编方括号里的字 " +
+            "表情要贴本轮情绪 她难受或说正事时用 [捂脸] [叹气] 这类 不要用 [旺柴] [吃瓜] 起哄。"
     // Placed after context so the model treats profiles/history as evidence, not wording templates.
     const val TURN_WRITING_CHECK =
         "最后核对写法：这句话是我在回应她 还是旁观者在点评她。优先直接说我的选择 意愿 好奇或感受 不替她下结论。" +
@@ -46,7 +53,36 @@ internal object ReplyPolicy {
     private val courtesy = Regex("^(谢谢|感谢|不客气|不用谢|不用客气|请问|您好|" +
         "你好(?=$|[\\s\\p{P}呀啊])|打扰了|辛苦了|辛苦你|祝你)")
 
-    fun format(text: String): String = text.replace(punctuation, " ").trim()
+    // WeChat emote tokens such as [捂脸] are bracketed, so the punctuation strip used to
+    // turn them into bare words ("捂脸"). The real chat log shows emotes in ~10% of my own
+    // messages, none in Jev output, which is itself a tell. Only names seen in the user's
+    // own chats are kept; any other bracket group is dropped whole instead of leaking text.
+    private val bracketToken = Regex("\\[([^\\[\\]]{1,6})\\]")
+    private val emotes = setOf("捂脸", "吃瓜", "囧", "流汗", "破涕为笑", "旺柴", "流泪", "微笑",
+        "呲牙", "拥抱", "亲亲", "偷笑", "害羞", "裂开", "Emm", "凋谢", "尴尬", "发呆", "皱眉",
+        "让我看看", "转圈", "跳跳", "不敢看", "心碎", "爱心", "脸红", "傲慢", "难过", "合十",
+        "玫瑰", "强", "色", "叹气", "苦涩", "调皮", "白眼", "笑脸", "汗", "机智", "撇嘴",
+        "嘿哈", "右哼哼", "发怒", "惊恐", "大哭", "憨笑", "敲打", "委屈", "狗子", "笑倒地",
+        "抠鼻", "吐", "天啊", "恐惧", "疑问", "坏笑", "握手", "奸笑", "无语", "抱拳", "加油",
+        "666", "鼓掌", "酷", "骷髅", "炸弹", "月亮", "太阳", "礼物", "蛋糕", "啤酒", "咖啡",
+        "饭", "猪头", "西瓜", "菜刀", "示爱", "胜利", "OK", "打脸", "社会社会", "好的", "翻白眼")
+
+    fun format(text: String): String {
+        if (text.isEmpty()) return text
+        val kept = ArrayList<String>()
+        val masked = bracketToken.replace(text) { match ->
+            val name = match.groupValues[1]
+            if (name in emotes) { kept.add(name); "\u0001${kept.size - 1}\u0001" } else " "
+        }
+        var out = masked.replace(punctuation, " ").trim()
+        // Real messages glue the emote to the preceding word ("行吧[捂脸]"), so drop the
+        // separator the punctuation strip inserted in front of each restored token.
+        kept.forEachIndexed { index, name ->
+            out = out.replace(" \u0001$index\u0001", "\u0001$index\u0001")
+                .replace("\u0001$index\u0001", "[$name]")
+        }
+        return out.trim()
+    }
     private val intrusive = Regex(
         """你.{0,12}(床上|躺着|坐着刷剧|洗澡|穿什么|睡衣|住哪|住址|一个人在家|现在在哪|具体位置|定位|身高|体重|收入|工资|前任|恋爱史|有没有男朋友)"""
     )
@@ -59,6 +95,44 @@ internal object ReplyPolicy {
     private val otherInvited = Regex(
         """((一起|约|要不要|来不来|有空).{0,12}(见面|吃饭|喝|逛|玩|出来))|((见面|吃饭|喝咖啡).{0,8}(吗|吧|？|\?))"""
     )
+
+    // ------------------------------------------------------------ known echo
+    // Prompt rules alone never stopped "感冒了啊 多喝热水": the model repeats what
+    // she just said before answering. This removes that known-information echo
+    // deterministically, before formatting. It only trims a leading restatement,
+    // never rewrites, invents or drops the actual reply.
+    private val echoNoise = Regex("[\\p{P}\\s]+")
+    private val echoLead = setOf('你', '哇', '诶', '哎', '嗯', '哦', '啊', '哈')
+    private val echoTail = setOf('啊', '呀', '呢', '吧', '哦', '嗯', '哈', '嘛',
+        '喔', '诶', '哎', '了', '哇', '呗', '咯')
+    private fun compactEcho(text: String) = echoNoise.replace(text, "")
+
+    /** Trim a leading restatement of the other person's words; keep the real reply. */
+    fun stripKnownEcho(text: String, recentOther: List<String>): String {
+        if (text.isBlank()) return text
+        val others = recentOther.map { compactEcho(it) }.filter { it.length >= 2 }
+        if (others.isEmpty()) return text
+        var head = 0
+        while (head < minOf(text.length, 2) && text[head] in echoLead) head++
+        val rest = text.substring(head)
+        var matched = 0
+        for (len in minOf(rest.length, 24) downTo 2) {
+            val piece = compactEcho(rest.substring(0, len))
+            if (piece.length >= 2 && others.any { it.contains(piece) }) { matched = len; break }
+        }
+        if (matched < 2) return text
+        var after = head + matched
+        while (after < text.length && text[after] in echoTail) after++
+        while (after < text.length && echoNoise.matches(text[after].toString())) after++
+        // A bare repeat with a real continuation ("感冒了就别熬夜") must stay intact.
+        if (after == head + matched) return text
+        val remaining = text.substring(after).trim()
+        if (compactEcho(remaining).length < 3) return text
+        return remaining
+    }
+
+    fun stripKnownEcho(candidates: List<ReplySuggestion>, recentOther: List<String>): List<ReplySuggestion> =
+        candidates.map { it.copy(text = stripKnownEcho(it.text, recentOther)) }
 
     fun safe(candidates: List<String>, latestOther: String, allowInvitation: Boolean = false): List<String> {
         val canAnswerInvite = allowInvitation || otherInvited.containsMatchIn(latestOther)
