@@ -540,10 +540,9 @@ private val WECHAT_TIME_LABEL = Regex(
     """(?:(?:\d{4}年)?\d{1,2}月\d{1,2}日|今天|昨天|前天)?(?:\s*(?:星期|周)[一二三四五六日天])?(?:\s*(?:凌晨|早上|上午|中午|下午|晚上)?\s*\d{1,2}[:：]\d{2})?""")
 
 /**
- * Mobile QQ (com.tencent.mobileqq). Nodes are NOT obfuscated (verified on QQ
- * 9.3.50 / Xiaomi 14, 1200x2670): message bodies are plain TextViews carrying
- * `id/mjn`, so collecting only that id already excludes timestamps, sender
- * nicknames (`id/mjq`) and the full-width system notice strips.
+ * QQ 9.3.50 uses mjn/371; 9.3.75 uses mjm/3o4 (USB node inspection).
+ * Keep explicit message/title ids rather than collecting all page text, which
+ * would mix presence, timestamps, nicknames and system notices into messages.
  *
  * The whole app lives under one SplashActivity (fragment architecture), so
  * "are we in a chat window" can only be answered by the tree itself — here, by
@@ -556,15 +555,18 @@ private val WECHAT_TIME_LABEL = Regex(
  * edge of the bubble hugs its avatar column instead of using the center point.
  */
 class QQAdapter : ChatAppAdapter {
-    override val pkg = "com.tencent.mobileqq"
+    override val pkg = PACKAGE
 
     override fun extract(root: AccessibilityNodeInfo, res: Resources): ChatSnapshot? {
+        if (root.packageName?.toString() != PACKAGE) return null
         val width = res.displayMetrics.widthPixels
         // top, left, right, text
         val bubbles = ArrayList<Bubble>()
         var firstBubbleTop = Int.MAX_VALUE
         var title: String? = null
         var hasInput = false
+        var groupPage = false
+        val times = ArrayList<Pair<Int, String>>()
 
         val stack = ArrayDeque<AccessibilityNodeInfo>()
         stack.addLast(root)
@@ -572,38 +574,55 @@ class QQAdapter : ChatAppAdapter {
         while (stack.isNotEmpty() && guard < 5000) {
             guard++
             val node = stack.removeLast()
+            if (!node.isVisibleToUser) continue
             val id = node.viewIdResourceName
-            val text = node.text?.toString()
-            if (id == BUBBLE_ID && !text.isNullOrBlank()) {
+            val text = node.text?.toString()?.trim()
+            if (node.contentDescription?.toString() == "群聊设置") groupPage = true
+            if (id in BUBBLE_IDS && !text.isNullOrBlank()) {
                 val b = Rect(); node.getBoundsInScreen(b)
-                bubbles.add(Bubble(b.top, b.left, b.right, text))
+                if (!b.isEmpty) bubbles.add(Bubble(b.top, b.left, b.right, text))
                 if (b.top < firstBubbleTop) firstBubbleTop = b.top
             }
             if (!hasInput && id == INPUT_ID) hasInput = true
-            if (id == TITLE_ID && title == null) text?.let { if (it.isNotBlank()) title = it }
+            if (id in TITLE_IDS && title == null) text?.let { if (it.isNotBlank()) title = it }
+            if (id !in BUBBLE_IDS && id !in TITLE_IDS && id != INPUT_ID && !text.isNullOrBlank() &&
+                (isWechatTimeLabel(text) || QQ_DATE_TIME.matches(text))) {
+                val b = Rect(); node.getBoundsInScreen(b)
+                if (b.left > width * .25 && b.right < width * .75) times.add(b.top to text)
+            }
             for (i in node.childCount - 1 downTo 0) node.getChild(i)?.let { stack.addLast(it) }
         }
-        if (bubbles.isEmpty() && !hasInput) return null
+        if (!hasInput || groupPage) return null
 
         if (title == null) title = findTitleInActionBar(root, firstBubbleTop, width, res)
         if (bubbles.isEmpty()) return ChatSnapshot(title, emptyList())
 
         val avatarEdge = (width * 0.13).toInt()
         bubbles.sortBy { it.top }
-        val msgs = bubbles.map { b ->
+        val unique = ArrayList<Bubble>()
+        for (b in bubbles) {
+            if (unique.none { it.text == b.text && kotlin.math.abs(it.top-b.top) <= 4 &&
+                    kotlin.math.abs(it.left-b.left) <= 4 && kotlin.math.abs(it.right-b.right) <= 4 }) unique.add(b)
+        }
+        val msgs = unique.map { b ->
             val dl = kotlin.math.abs(b.left - avatarEdge)
             val dr = kotlin.math.abs((width - avatarEdge) - b.right)
-            Msg(if (dr < dl) "me" else "other", b.text)
+            val side = if (minOf(dl, dr) > width * .12 || kotlin.math.abs(dl-dr) < width * .035) "unknown"
+                else if (dr < dl) "me" else "other"
+            val time = times.filter { it.first < b.top }.maxByOrNull { it.first }?.second
+            Msg(side, b.text, visibleTime = time, timeConfidence = if (time == null) "unknown" else "partial")
         }
-        return ChatSnapshot(title, msgs)
+        return ChatSnapshot(title, msgs, note = "QQ 可见文字；页面时间不等于逐条精确时间，未读到的语音或图片内容不作推断。")
     }
 
     private data class Bubble(val top: Int, val left: Int, val right: Int, val text: String)
 
     companion object {
-        private const val BUBBLE_ID = "com.tencent.mobileqq:id/mjn"
-        private const val TITLE_ID = "com.tencent.mobileqq:id/371"
+        const val PACKAGE = "com.tencent.mobileqq"
+        private val BUBBLE_IDS = setOf("$PACKAGE:id/mjn", "$PACKAGE:id/mjm")
+        private val TITLE_IDS = setOf("$PACKAGE:id/371", "$PACKAGE:id/3o4")
         private const val INPUT_ID = "com.tencent.mobileqq:id/input"
+        private val QQ_DATE_TIME = Regex("(?:\\d{4}/)?\\d{1,2}/\\d{1,2}\\s*(?:上午|下午|凌晨|晚上|中午)?\\s*\\d{1,2}:\\d{2}")
     }
 }
 

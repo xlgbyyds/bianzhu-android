@@ -70,6 +70,7 @@ object RoleChatGuide {
             append("场景：偏主人与小狗、Daddy与Mommy等角色称呼、依赖感和亲密陪伴的社交；角色语言可能只是当下玩笑，不等于长期身份。\n")
             if (app == PINGZI_PKG) {
                 append(PingziStyleGuide.BACKGROUND)
+                SocialTutorialGuide.select(snapshot, roles = true)?.let { append("本轮参考：").append(it.decision).append('\n') }
                 append("匿名渠道特点：双方没有联系方式，对方随时可能离开且离开后无法再联系；接话直接说重点，不寒暄铺垫，不催对方答复或追问为什么不回。")
                 append("平台会过滤不雅词并封号：不写露骨性内容，不施压索要见面、照片或账号。资料横幅的性别年龄段是自述未核实，不当作事实。")
                 append("对方表达害怕、犹豫或明确说不时，只接住感受，不再劝说或推进，不把犹豫当默许。\n")

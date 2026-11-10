@@ -55,7 +55,9 @@ object InvitationPlaybook {
             """
         }
         return "以下仅为虚构场景范文 不是当前联系人经历或用户已做安排 不可抄成事实\n" +
-            "允许参考接球 补约账本等表达 有共同玩笑语境才用 每组最多一条这样写 其余普通直说\n" +
+            (if (action in setOf(InvitationAction.WAIT, InvitationAction.STOP))
+                "本轮不使用补约或欠饭等邀约范文 只参考普通接话\n"
+            else "允许参考接球 补约账本等表达 有共同玩笑语境才用 每组最多一条这样写 其余普通直说\n") +
             cases.trimIndent() + "\n只学处理方法和语气 不照抄固定句子或挪用地点日期\n"
     }
 }

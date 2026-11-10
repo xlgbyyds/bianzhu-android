@@ -14,7 +14,6 @@ internal object PingziStyleGuide {
         "允许平实短反应；有双方接梗的语境才轻逗。截图样例只学表达，不继承其中的年龄、城市、经历、账号或角色身份。" +
         "加联系方式与见面分别判断，不把回复快、未离开、标签或暧昧话当作同意；不假装纯情或资深，不拉踩他人，不用压力或露骨性话术换取回应。\n"
 
-    private val hesitation = Regex("害怕|有点怕|不敢|太快|太急|还不熟|别催|别问|别这样|先别|算了|不想|不方便|不加|不要|不喜欢|只.{0,3}这.{0,2}聊|只聊")
     private val contactOffer = Regex("加.{0,4}(?:微信|绿泡泡|联系方式|[qQvV]|你)|(?:微信|[qQvV]|联系方式).{0,4}(?:给你|发你)")
     private val intent = Regex("来这.{0,3}(?:干嘛|做什么)|找什么|想找|想认识|谈恋爱|什么关系")
     private val personalFact = Regex("你.{0,4}(?:多大|几岁|哪里人|哪的人|多高|多重|做什么工作|干什么工作|经验|谈过|几次)")
@@ -34,8 +33,10 @@ internal object PingziStyleGuide {
         val others = snapshot.messages.filter { it.side == "other" }.takeLast(3)
         val latest = others.lastOrNull()?.text.orEmpty()
         if (latest.isBlank() && !opener) return ""
-        val cautious = others.any { hesitation.containsMatchIn(it.text) }
+        val cautious = SocialTutorialGuide.hasConcern(snapshot)
+        val lesson = SocialTutorialGuide.select(snapshot, roles = true)
         val example = when {
+            lesson?.id in setOf("text_only", "role_mismatch", "payment_boundary") -> lesson!!.writing
             cautious -> "本轮有顾虑或不愿意的表达：短句接住，不追加角色玩笑、联系方式或见面请求。" +
                 "写法示例：她说先不加 就在这聊，可回 行 就在这聊。"
             contactOffer.containsMatchIn(latest) -> "本轮对方主动提出换联系方式：直接回应她选的渠道，只处理交换方式。" +
@@ -48,6 +49,7 @@ internal object PingziStyleGuide {
                 "虚构写法示例：想认识聊得来的人 合适就继续。用户意图未提供就不替他选长期或短期关系。"
             banter.containsMatchIn(latest) -> "本轮可以轻轻接梗：说自己的兴趣或反应，不评价她性格，不靠压过她证明主导。" +
                 "虚构写法示例：她说你怎么这么直接，可回 想认识你 就直说了。每组最多一条轻逗，其余平实。"
+            lesson != null -> "参考类型=${lesson.id}。" + lesson.writing
             greeting.matches(latest.trim()) -> "本轮只是互相招呼：直接表达想认识或抛一个容易接的小话题，不评论她的招呼。" +
                 "虚构写法示例：想找个人聊两句 你呢。不要写这句好正式、这么高冷、终于等到你；playful 没有共同细节就平实写。"
             latest.isBlank() -> "本轮尚无对方消息：给简单招呼或真实认识意愿，不查户口，不凭平台给对方分配角色。" +
@@ -68,9 +70,11 @@ internal object PingziStyleGuide {
             InvitationAction.WAIT, InvitationAction.STOP -> "本轮执行 ${action.name}，只简短接话，不追加加账号或见面要求。"
             InvitationAction.CLARIFY -> "只问清 Jev 指定的一个实际条件，不捆绑加微信或见面。"
             InvitationAction.CONFIRM -> "只落实对方已同意见面的未定细节；答应加微信不是答应见面，不借机换成私密地点。"
-            else -> "按 Jev 判断提出一个具体、可调整的公开活动，不把见面默认成亲密接触。" +
+            else -> if (SocialTutorialGuide.hasConcern(snapshot)) "先处理当前顾虑，不默认对方已答应，不套固定邀约范文。"
+            else "按 Jev 判断提出一个具体、可调整的公开活动，不把见面默认成亲密接触。" +
                 "虚构写法示例：想和你见一面 找个咖啡店坐坐。没有同城、时间等事实就别编地点和行程。"
         }
-        return MARKER + "邀约用短句直接说明意愿，一次一个目标，不展示技巧或宣告主导。" + direction
+        return MARKER + "邀约用短句直接说明意愿，一次一个目标，不展示技巧或宣告主导。" + direction +
+            SocialTutorialGuide.invitationDetail(snapshot, action)
     }
 }

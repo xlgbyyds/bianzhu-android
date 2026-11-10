@@ -91,6 +91,7 @@ class ReplyClient(
         }
         val turnMode = ReplyTurnPolicy.mode(snapshot)
         val roleInstruction = RoleChatGuide.replyInstruction(snapshot, ctx?.sceneGuidance.orEmpty(), opener = false)
+        val soulInstruction = SoulChatGuide.replyInstruction(snapshot, ctx?.sceneGuidance.orEmpty(), opener = false)
         val styles = ReplyTurnPolicy.styles(turnMode, if (timeContext.restart) listOf("restart", "resume_topic", "share_now")
             else if (roleInstruction.startsWith(PingziStyleGuide.MARKER)) listOf("natural", "follow_detail", "simple")
             else ReplyStylePolicy.stylesFor(pageAge, prefs.prefersPlayfulReplies() || roleInstruction.isNotBlank()))
@@ -128,7 +129,7 @@ class ReplyClient(
             delayedGuidance +
             decisionGuidance +
             feedbackInstruction +
-            "style 的取值必须从本轮指定的三个标签中逐字选择；不要输出分析过程。" + roleInstruction
+            "style 的取值必须从本轮指定的三个标签中逐字选择；不要输出分析过程。" + roleInstruction + soulInstruction
         val user = knowledgeBlock(relationship, ctx) +
             "关系：$relationship\n$timing\n当前可见对话：\n$convo\n\n" +
             ReplyTurnPolicy.instruction(turnMode, false) + "\n" +
@@ -161,13 +162,17 @@ class ReplyClient(
         val timing = com.jev.probe.core.ConversationTiming.from(snapshot).prompt() + "\n"
         val feedback = prefs.replyFeedbackGuidance()
         val roleInstruction = RoleChatGuide.replyInstruction(snapshot, ctx?.sceneGuidance.orEmpty(), opener = true)
+        val soulInstruction = SoulChatGuide.replyInstruction(snapshot, ctx?.sceneGuidance.orEmpty(), opener = true)
+        val hasSoulQuestion = ctx?.sceneGuidance.orEmpty().startsWith(SoulChatGuide.PREFIX) &&
+            SoulChatGuide.shouldAnswer(snapshot)
         val styles = listOf("fresh_opening", "light_callback",
             if (prefs.prefersPlayfulReplies() || roleInstruction.isNotBlank()) "playful" else "simple")
         val hasRoleGreeting = roleInstruction.contains("【呼叫小狗本轮写法】")
         val hasPingziWriting = roleInstruction.startsWith(PingziStyleGuide.MARKER)
         val sys = "你是中文聊天开场助手。只输出 JSON 对象：{\"replies\":[{\"style\":\"...\",\"text\":\"...\"}]}。" +
             ReplyPolicy.NATURAL_VOICE + ReplyPolicy.LISTENING_AND_CONTINUITY +
-            (if (hasPingziWriting) "恰好给出三条不同候选，每条使用一个指定 style。按文末瓶子说本轮写法处理，有尚未回应的问题先回答，不强制换话题。"
+            (if (hasSoulQuestion) "恰好给出三条不同候选，使用指定style。优先回答当前待答问题或接下表达反馈，不强制更换话题。"
+            else if (hasPingziWriting) "恰好给出三条不同候选，每条使用一个指定 style。按文末瓶子说本轮写法处理，有尚未回应的问题先回答，不强制换话题。"
             else if (hasRoleGreeting) "恰好给出三条不同开场，每条使用一个指定 style，不重复。具体按文末呼叫小狗本轮写法处理；有尚未回应的角色招呼时先接招呼，不强制另起普通话题。"
             else "恰好给出三条不同开场，每条使用一个指定 style，不重复；fresh_opening 是自然新开场，light_callback 是轻轻回扣旧话题，simple 是普通招呼或直接表达想聊；指定 playful 时有语境才轻逗，没有合适细节就给平实开场。至少一条脱离当前屏幕上已经收尾的旧话题，不能三条换着说同一件事。新开场不能继续盘问过时的安排；回扣只选未过期的共同话题，已经收尾的话题不原样接续。倾诉过的创伤和前任经历不作为破冰素材，除非对方本轮主动继续说。无旧话题时回扣项也用自然破冰，不编造记忆。") +
             "亲近程度必须服从实际关系，陌生人不装熟，不能为了风格标签强行暧昧。" +
@@ -183,13 +188,14 @@ class ReplyClient(
             "先建立轻松舒服的交流，不主动约饭、见面、问有没有空；" +
             "不询问对方现在的位置、床上/躺坐状态、穿着或其他私密信息。" +
             "已审核档案的后续聊天方向只是参考，开场仍须贴合眼前资料和自然情境，不要把多个话题硬塞进一句。" +
-            feedback.takeIf { it.isNotBlank() }?.let { "用户明确给过的口吻偏好：$it。" }.orEmpty() + roleInstruction
+            feedback.takeIf { it.isNotBlank() }?.let { "用户明确给过的口吻偏好：$it。" }.orEmpty() + roleInstruction + soulInstruction
         val user = knowledgeBlock(relationship, ctx) +
             "关系：$relationship\n阶段：$stage\n$timing" +
             "另行提供的对方资料卡文字（自述，非独立核实）：${facts.ifBlank { "无" }}\n" +
             "当前可见聊天：${conversation.ifBlank { "无" }}\n" +
             (if (!hasDialogueEvidence) "没有读到可用聊天正文 不知道是否聊过 light_callback 也给自然破冰 不说上次聊得开心或你之前说过\n" else "") +
-            (if (hasPingziWriting) "本轮按瓶子说本轮写法生成不同接法 优先回答当前问题 不把陌生人当旧联系人"
+            (if (hasSoulQuestion) "本轮按Soul本轮接话处理 待答问题先答 表达反馈简短接住 不为了开场改话题"
+                else if (hasPingziWriting) "本轮按瓶子说本轮写法生成不同接法 优先回答当前问题 不把陌生人当旧联系人"
                 else if (hasRoleGreeting) "本轮按呼叫小狗的角色式招呼生成不同接法 不编共同经历或现实承诺"
                 else ReplyTurnPolicy.instruction(ReplyTurnPolicy.mode(snapshot), true)) + "\n" +
             "本轮三个 style：${styles.joinToString(", ")}。请按顺序给三条适宜的开场话语。\n" +
@@ -204,19 +210,22 @@ class ReplyClient(
     /** The reply model receives the completed Jev decision, never a simultaneous guess. */
     fun invitations(snapshot: ChatSnapshot, relationship: String, ctx: ChatContext?,
                     plan: InvitationPlan): List<ReplySuggestion> {
-        val styles = listOf("invite_direct", "invite_context", "invite_playful")
         val progressing = plan.action in setOf(InvitationAction.INVITE, InvitationAction.REFRAME,
             InvitationAction.CONFIRM)
+        val holding = plan.action in setOf(InvitationAction.WAIT, InvitationAction.STOP)
+        val styles = if (holding) listOf("natural", "follow_detail", "simple")
+            else listOf("invite_direct", "invite_context", "invite_playful")
         val system = "你是用户本人的中文聊天代拟助手 只输出合法 JSON 对象 " +
             "{\"replies\":[{\"style\":\"...\",\"text\":\"...\"}]}。" +
             ReplyPolicy.NATURAL_VOICE + ReplyPolicy.LISTENING_AND_CONTINUITY +
             ReplyPolicy.WRITING_STYLE + ReplyPolicy.SPEAKER_AND_REFERENCE_GUIDANCE + ReplyPolicy.SPEAKER_PERSON_MAP +
-            "本轮用户明确点击帮我邀约 请执行已完成的 Jev 决策 不沿用普通回复禁止主动邀约的规则。" +
+            (if (holding) "虽然入口叫帮我邀约，Jev 本轮决策是${plan.action.name}：只正常接话。不能再提回头请吃饭、改天补一顿、找时间见等隐含邀约，也不能把旧事情说成刚发生。"
+            else "本轮用户明确点击帮我邀约 请执行已完成的 Jev 决策 不沿用普通回复禁止主动邀约的规则。") +
             "INVITE 提出具体活动和可调整的大致安排；REFRAME 回应明确顾虑并换切口；CONFIRM 只落实未定细节。" +
             "CLARIFY 只澄清一个真实缺口；WAIT 正常接当前话题不再邀约；STOP 简短承接拒绝 不继续说服。" +
             "一组恰好三条互斥备选 每条至多一个问题 不超过55字 不写分析到正文里。" +
-            "invite_direct 自然直说；invite_context 结合有来源的共同活动；invite_playful 有接梗基础才轻逗 否则仍普通直说。" +
-            "允许用范文中的接球 补约账本等说法 但不能每次都用 不能编出欠约或承诺。" +
+            (if (holding) "natural、follow_detail、simple 只给普通接话，不能为了风格安排活动或补约。"
+            else "invite_direct 自然直说；invite_context 结合有来源的共同活动；invite_playful 有接梗基础才轻逗 否则仍普通直说。允许参考接球、补约账本等说法，但不能编出欠约或承诺。") +
             "不把含糊当永久拒绝 可在合理新切口下再次邀请；也不把含糊当已经答应。" +
             "不声称她故作矜持 不假设她有身材顾虑 不用激将 内疚感 假借口或索取定心丸。" +
             "不要求住址定位 不编用户已订票 已在附近 去过某店 已查过营业等事实。" +
@@ -224,6 +233,7 @@ class ReplyClient(
             "陌生地点只写活动类型或请用户补充 不捏造具体店名路线和当前天气。" +
             "关系档案是背景 当前可靠原话和本轮决策优先于旧档案的泛化节奏建议。" +
             RoleChatGuide.invitationInstruction(snapshot, ctx?.sceneGuidance.orEmpty(), plan.action) +
+            SoulChatGuide.invitationInstruction(snapshot, ctx?.sceneGuidance.orEmpty(), plan.action) +
             prefs.replyFeedbackGuidance()
         val user = knowledgeBlock(relationship, ctx?.copy(history = emptyList())) +
             "关系：$relationship\n${com.jev.probe.core.ConversationTiming.from(snapshot).prompt()}\n" +
@@ -233,7 +243,8 @@ class ReplyClient(
             "本轮 styles：${styles.joinToString(",")} 请按顺序给三条 完全服从本轮决策。\n" +
             ReplyPolicy.TURN_WRITING_CHECK
         val suggestions = parseSuggestions(chat(system, user, 0.75, jsonObject = true), styles, snapshot)
-        return ReplyPolicy.safeSuggestions(preferConcrete(suggestions, snapshot),
+        val consistent = InvitationPolicy.constrainReplies(preferConcrete(suggestions, snapshot), plan.action)
+        return ReplyPolicy.safeSuggestions(consistent,
             "", allowInvitation = progressing || plan.action == InvitationAction.CLARIFY)
             .ifEmpty { throw IllegalStateException("本轮未返回符合邀约决策的候选 请核实识别内容后重试") }
     }

@@ -597,6 +597,7 @@ open class ChatCaptureService : AccessibilityService() {
         QingtengAdapter.PACKAGE -> "青藤之恋"
         PupcallAdapter.PACKAGE -> "呼叫小狗"
         PingziAdapter.PACKAGE -> "瓶子说"
+        QQAdapter.PACKAGE -> "QQ"
         else -> "当前 App"
     } + "已识别为支持的 App，但聊天页结构暂时没读全。这不代表该 App 不支持；请保持聊天页停稳后重试。"
 
@@ -740,9 +741,7 @@ open class ChatCaptureService : AccessibilityService() {
                     fresh.messages.isEmpty()) {
                     scopeReadRetry.reset("analyze")
                     ocrCaptureManual()
-                } else if (pkg == PKG_WECHAT || pkg == "com.tantan.x" || pkg == "cn.soulapp.android" ||
-                    pkg == "cn.neoclub.uki" || pkg == QingtengAdapter.PACKAGE || pkg == PupcallAdapter.PACKAGE ||
-                    pkg == PingziAdapter.PACKAGE) {
+                } else if (pkg in OPENING_CHAT_PACKAGES) {
                     if (!retrySupportedScopeRead("analyze", pkg, root.windowId) {
                             overlay?.onManualAnalyze?.invoke()
                         }) {
@@ -893,8 +892,8 @@ open class ChatCaptureService : AccessibilityService() {
         }
         val root = rootInActiveWindow
         val pkg = root?.packageName?.toString()
-        if (root == null || pkg !in setOf(PKG_WECHAT, "com.tantan.x", QingtengAdapter.PACKAGE, SoulAdapter.PACKAGE)) {
-            overlay?.showNotice("请先打开微信、牵手、Soul 或青藤之恋的聊天页，再开始补录。")
+        if (root == null || pkg !in com.jev.probe.core.ChatAppCapabilities.automaticMemory) {
+            overlay?.showNotice("请先打开微信、牵手、Soul、QQ 或青藤之恋的聊天页，再开始补录。")
             return
         }
         if (ocrBusy) { overlay?.showProgress("正在核对聊天标题，请稍候…"); return }
@@ -1501,7 +1500,7 @@ open class ChatCaptureService : AccessibilityService() {
             if (prefs.ocrFallback && pkg != PKG_WECHAT &&
                 pkg != "cn.soulapp.android" && pkg != "com.tantan.x" &&
                 pkg != "cn.neoclub.uki" && pkg != QingtengAdapter.PACKAGE && pkg != PupcallAdapter.PACKAGE &&
-                pkg != PingziAdapter.PACKAGE) {
+                pkg != PingziAdapter.PACKAGE && pkg != QQAdapter.PACKAGE) {
                 // Gate BEFORE the shot, not after the OCR. Feishu's tree is empty
                 // on every content-changed event, and a successful shot resets the
                 // failure backoff — so without this the caret blinking or an
@@ -1679,8 +1678,8 @@ open class ChatCaptureService : AccessibilityService() {
     /** Passive, opt-in storage. Never blocks a bubble tap or sends a model request. */
     private fun queueMemoryCapture(snapshot: ChatSnapshot, pkg: String?, historical: Boolean) {
         if (contactBinding.contactId(session.target) != null) return
-        if (pkg != PKG_WECHAT && pkg != "com.tantan.x" && pkg != QingtengAdapter.PACKAGE && pkg != SoulAdapter.PACKAGE) return
-        if ((pkg == SoulAdapter.PACKAGE || pkg == PKG_WECHAT) &&
+        if (pkg == null || pkg !in com.jev.probe.core.ChatAppCapabilities.automaticMemory) return
+        if (pkg in com.jev.probe.core.ChatAppCapabilities.confirmedSpeakers &&
             snapshot.messages.any { it.side != "me" && it.side != "other" }) {
             if (historyCaptureMode) {
                 val message = "本屏有发言者未确认的消息 请先核实我和对方 本屏未保存"
@@ -1772,7 +1771,7 @@ open class ChatCaptureService : AccessibilityService() {
     private fun maybeGenerateRelationshipProfile(contact: com.jev.probe.core.kb.Contact?, appName: String): Boolean {
         contact ?: return false
         if (!contact.memoryEnabled || appName !in contact.apps ||
-            appName !in setOf(PKG_WECHAT, "com.tantan.x", "cn.soulapp.android", QingtengAdapter.PACKAGE))
+            appName !in com.jev.probe.core.ChatAppCapabilities.automaticMemory)
             return false
         if (contact.relationshipProfiles.containsKey(appName) || contact.relationshipProfileDrafts.containsKey(appName))
             return false
@@ -1813,9 +1812,7 @@ open class ChatCaptureService : AccessibilityService() {
     private fun requestConversationSuggestions(purpose: ConversationPurpose) {
         val root = rootInActiveWindow
         val pkg = root?.packageName?.toString()
-        val observedSnapshot = if (root != null && pkg in setOf(PKG_WECHAT, "com.tantan.x",
-                "cn.soulapp.android", "cn.neoclub.uki", QingtengAdapter.PACKAGE, PupcallAdapter.PACKAGE,
-                PingziAdapter.PACKAGE))
+        val observedSnapshot = if (root != null && pkg in OPENING_CHAT_PACKAGES)
             snapshotFor(root) else null
         val target = root?.let { targetFor(it, observedSnapshot) }
         val reviewed = target?.let { candidate ->
@@ -1851,7 +1848,7 @@ open class ChatCaptureService : AccessibilityService() {
                     scopeReadRetry.reset(purpose.key)
                     overlay?.showNotice(if (pkg != null && pkg in OPENING_CHAT_PACKAGES)
                         supportedScopeReadFailure(pkg)
-                    else "请打开微信、牵手、青藤之恋、Soul 或 Uki 的聊天页，再点“帮我${purpose.label}”；资料卡读取尚未接入。")
+                    else "请打开微信、牵手、青藤之恋、Soul、QQ 或 Uki 的聊天页，再点“帮我${purpose.label}”；资料卡读取尚未接入。")
                 }
             target.title == null && !prefs.isAllowed(null) ->
                 overlay?.showNotice("微信备注暂时无法识别；联系人白名单无法确认此人，本次未生成${purpose.label}建议。请先让备注可识别，或关闭白名单限制。")
@@ -2855,10 +2852,7 @@ open class ChatCaptureService : AccessibilityService() {
         private const val TAG = "JEVASSIST"
 
         private const val PKG_WECHAT = "com.tencent.mm"
-        private val OPENING_CHAT_PACKAGES = setOf(
-            PKG_WECHAT, "com.tantan.x", "cn.soulapp.android", "cn.neoclub.uki", QingtengAdapter.PACKAGE, PupcallAdapter.PACKAGE,
-            PingziAdapter.PACKAGE
-        )
+        private val OPENING_CHAT_PACKAGES = com.jev.probe.core.ChatAppCapabilities.suggestions
         private val WECHAT_NON_CHAT_TITLES = setOf("微信", "通讯录", "发现", "我", "搜索")
 
         /** Whole-screen OCR keeps the middle: no action bar, no input area. */

@@ -38,6 +38,16 @@ data class InvitationResult(val plan: InvitationPlan, val replies: List<ReplySug
 
 /** Same bounded evidence is sent to both models, with provenance and speaker intact. */
 object InvitationPolicy {
+    // Real QQ replay: WAIT drafts still said "回头有空我请你吃点东西" and "改天补你一顿饭".
+    // Scope the extra guard to an explicit WAIT/STOP so normal invitation flows keep their options.
+    private val deferredInvite = Regex("(?:请你|补你|带你|陪你|跟你|和你|咱们|我们).{0,8}(?:吃|饭|餐|喝|咖啡|电影|看展|逛|散步|坐坐|走走|见面)|" +
+        "(?:想|要|想要)见你|(?:来找我|我去找你|见个面|见一面)|(?:欠|补).{0,5}(?:一顿|顿饭|约)")
+
+    internal fun constrainReplies(replies: List<ReplySuggestion>, action: InvitationAction): List<ReplySuggestion> =
+        if (action in setOf(InvitationAction.WAIT, InvitationAction.STOP))
+            replies.filterNot { deferredInvite.containsMatchIn(it.text) }
+        else replies
+
     fun evidence(snapshot: ChatSnapshot, ctx: ChatContext?): List<InvitationEvidence> {
         val history = ctx?.history.orEmpty().takeLast(24).filter {
             it.side in setOf("me", "other") && it.kind in setOf("TEXT", "VOICE_TRANSCRIPT")

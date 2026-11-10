@@ -109,7 +109,9 @@ object ContextBuilder {
         val voice = com.jev.probe.core.ReplyVoicePolicy.guidance(approved, own, styleComplaint)
         val roleScene = app in com.jev.probe.capture.RoleSceneApps.PACKAGES && snapshot.roleChat != null
         val scene = if (roleScene) com.jev.probe.jev.RoleChatGuide.guidance(snapshot,
-            com.jev.probe.core.RoleChatStore(context).load(contact?.id), app) else ""
+            com.jev.probe.core.RoleChatStore(context).load(contact?.id), app)
+        else if (app == com.jev.probe.capture.SoulAdapter.PACKAGE) com.jev.probe.jev.SoulChatGuide.guidance(snapshot)
+        else ""
         return ChatContext(contact, trimmedHistory, alwaysOn + trimmedHits, profile, voice, scene,
             if (roleScene) com.jev.probe.jev.RoleChatGuide.defaultRelationship(app) else null)
     }

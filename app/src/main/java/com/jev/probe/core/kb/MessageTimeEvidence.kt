@@ -6,7 +6,7 @@ import java.time.ZoneId
 
 /** Compare visible labels by evidence, without inventing a date for a clock-only label. */
 internal object MessageTimeEvidence {
-    private val calendarLabel = Regex("(?:(\\d{4})年)?(\\d{1,2})月(\\d{1,2})日")
+    private val calendarLabel = com.jev.probe.core.calendarDateLabel
     private val clockLabel = Regex("(\\d{1,2})[:：](\\d{2})")
     private val afternoon = Regex("下午|晚上|傍晚|中午")
     private val morning = Regex("凌晨|上午")

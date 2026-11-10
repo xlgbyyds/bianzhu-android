@@ -467,7 +467,7 @@ class KbStore private constructor(context: Context) {
         // Defense at the storage boundary as well as in the capture service.
         // Manually edited history remains editable, but uncertain automatic
         // attribution must never become a remembered fact.
-        if (appName in setOf("com.tencent.mm", "cn.soulapp.android") &&
+        if (appName in com.jev.probe.core.ChatAppCapabilities.confirmedSpeakers &&
             snapshot.messages.any { it.side != "me" && it.side != "other" })
             return@synchronized CaptureResult(reason = "本屏有发言者未确认的消息 请先核实我和对方 本屏未保存", needsReview = true)
         val title = snapshot.title ?: return@synchronized CaptureResult(reason = "当前联系人名称未确认 本屏未保存")
@@ -844,9 +844,7 @@ class KbStore private constructor(context: Context) {
     companion object {
         private const val TAG = "JEVASSIST"
         const val MAX_LOG = 300
-        private val VISIBLE_MEMORY_APPS = setOf(
-            "com.tencent.mm", "com.tantan.x", "cn.soulapp.android", "com.wepie.ivy", "com.yixiangweilai.yuebaobao"
-        )
+        private val VISIBLE_MEMORY_APPS = com.jev.probe.core.ChatAppCapabilities.storedMemory
 
         @Volatile private var instance: KbStore? = null
 

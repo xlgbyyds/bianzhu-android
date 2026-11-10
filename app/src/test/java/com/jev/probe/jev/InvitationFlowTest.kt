@@ -143,4 +143,32 @@ class InvitationFlowTest {
             assertTrue(runCatching { client.invitations(snapshot, "", null, plan) }.isFailure)
         }
     }
+
+    @Test fun waitAndStopRemoveDeferredMealPromisesButKeepOrdinaryFoodConversation() {
+        val bad=listOf("进群的事先这样 回头有空我请你吃点东西", "好吧好吧收到 那改天得补你一顿饭", "改天带你去看展")
+        val good=listOf("好 先不约了", "今天晚饭吃得挺早", "那件事后来办好了吗")
+        val rows=(bad+good).map { ReplySuggestion(it,"natural","") }
+        for(a in listOf(InvitationAction.WAIT,InvitationAction.STOP))
+            assertEquals(good,InvitationPolicy.constrainReplies(rows,a).map { it.text })
+        assertEquals(rows,InvitationPolicy.constrainReplies(rows,InvitationAction.INVITE))
+    }
+
+    @Test fun holdingDecisionUsesOrdinaryWritingAndRejectsLiveDeviceRegressionsWithoutRetry() {
+        val prefs=Prefs(RuntimeEnvironment.getApplication(),"invitation-holding")
+        val evidence=InvitationPolicy.evidence(snapshot,null)
+        for(action in listOf(InvitationAction.WAIT,InvitationAction.STOP)) {
+            var calls=0
+            val client=ReplyClient(prefs) { _,_,body ->
+                calls++
+                val system=body.getJSONArray("messages").getJSONObject(0).getString("content")
+                assertFalse(system.contains("不沿用普通回复禁止主动邀约的规则"))
+                assertFalse(system.contains("invite_playful 有接梗基础"))
+                JSONObject().put("choices",org.json.JSONArray().put(JSONObject().put("message",JSONObject().put("content",
+                    """{"replies":[{"text":"回头有空我请你吃点东西"},{"text":"改天得补你一顿饭"},{"text":"那件事后来办好了吗"}]}"""))))
+            }
+            val result=client.invitations(snapshot,"",null,InvitationPlan(action,null,"未知",evidence))
+            assertEquals(listOf("那件事后来办好了吗"),result.map { it.text })
+            assertEquals(1,calls)
+        }
+    }
 }

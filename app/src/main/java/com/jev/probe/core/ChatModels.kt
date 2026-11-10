@@ -36,7 +36,7 @@ fun pageDateAgeDays(label: String?, today: LocalDate = LocalDate.now()): Long? {
     if (value.contains("今天")) return 0
     if (value.contains("昨天")) return 1
     if (value.contains("前天")) return 2
-    val match = Regex("""(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日""").find(value) ?: return null
+    val match = calendarDateLabel.find(value) ?: return null
     val year = match.groupValues[1].takeIf { it.isNotEmpty() }?.toIntOrNull()
     val month = match.groupValues[2].toIntOrNull() ?: return null
     val day = match.groupValues[3].toIntOrNull() ?: return null
@@ -53,6 +53,9 @@ fun pageDateAgeDays(label: String?, today: LocalDate = LocalDate.now()): Long? {
 }
 
 data class PageTimeEvidence(val label: String?, val ageDays: Long?)
+
+/** QQ slash labels and Chinese labels share the same year/month/day evidence. */
+internal val calendarDateLabel = Regex("""(?<!\d)(?:(\d{4})[年/])?(\d{1,2})[月/](\d{1,2})(?:日|(?=\s|$))""")
 
 /** Use the latest visible calendar label even when the last bubble only shows HH:mm. */
 fun pageTimeEvidence(messages: List<Msg>, today: LocalDate = LocalDate.now()): PageTimeEvidence {
