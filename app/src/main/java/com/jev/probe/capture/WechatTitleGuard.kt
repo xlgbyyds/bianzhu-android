@@ -1,5 +1,23 @@
 package com.jev.probe.capture
 
+import com.jev.probe.core.Msg
+
+/**
+ * Identity of the conversation currently on screen, used to prove that an OCR
+ * title belongs to the page that asked for it.
+ *
+ * Only "who said what" counts. Hashing the whole message object used to fold in
+ * screen coordinates, visible-time labels and capture provenance, so WeChat's
+ * safety banner, a bubble redraw or the "可按住 转文字" hint rewrote the key and
+ * the same chat was reported as "聊天页面已变化" (real device, 1.4-personal.111).
+ */
+internal fun wechatPageFingerprint(windowId: Int, region: String, messages: List<Msg>): String {
+    val words = buildString {
+        messages.forEach { append(it.side).append('\u0001').append(it.text).append('\u0002') }
+    }
+    return "$windowId|$region|${words.hashCode()}"
+}
+
 /** A screenshot title belongs only to the unchanged visible page that requested it. */
 internal class WechatTitleGuard {
     data class Ticket(val generation: Long, val page: String)

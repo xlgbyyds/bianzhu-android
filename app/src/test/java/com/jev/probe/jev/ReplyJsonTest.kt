@@ -26,6 +26,19 @@ class ReplyJsonTest {
         assertEquals(1, calls)
     }
 
+    @Test fun oneAmbiguousRowIsDroppedAndTheRestStillShip() {
+        val prefs = Prefs(RuntimeEnvironment.getApplication(), "ambiguous-row")
+        val raw = """{"replies":[""" +
+            """{"style":"natural","text":"想跟你多聊聊"},""" +
+            """{"style":"follow_detail","text":"顺势表达兴趣","style":"simple"},""" +
+            """{"style":"simple","text":"行"}]}"""
+        val out = ReplyClient(prefs) { _, _, _ ->
+            JSONObject().put("choices", JSONArray().put(JSONObject().put("message", JSONObject().put("content", raw))))
+        }.draft(ChatSnapshot("测试", listOf(Msg("other", "哈哈"))), "朋友")
+        assertEquals(2, out.size)
+        assertFalse(out.any { it.text.contains("顺势表达兴趣") })
+    }
+
     @Test fun sameKeysInDifferentRowsAndEscapedTextAreValid() {
         ReplyJson.requireUnambiguousKeys("""{"replies":[{"text":"他说 \"text\": 别误判 { }"},{"text":"可以"}]}""")
         ReplyJson.requireUnambiguousKeys("""["第一条","第二条"]""")

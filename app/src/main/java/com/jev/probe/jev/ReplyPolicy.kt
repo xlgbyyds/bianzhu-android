@@ -175,6 +175,20 @@ internal object ReplyPolicy {
     fun fixSpeakerPerspective(candidates: List<ReplySuggestion>): List<ReplySuggestion> =
         candidates.map { it.copy(text = fixSpeakerPerspective(it.text)) }
 
+    // The prompt already bans stance announcements, yet 3.3% of 30 live drafts still
+    // opened with one ("我先记下了", "我认了"); the same phrases appear in 0.22% of
+    // 6,888 real own lines. Only a whole line that is nothing but a stance is dropped;
+    // a sentence that carries real content keeps it. A batch that is all stances keeps
+    // its originals rather than going empty.
+    private val stanceOnly = Regex(
+        "^(?:那|嗯|哦)?我(?:先|这就|都|也)?(?:记住了|记下了|认了|明白了|会注意的)[啊呀了呢吧]*(?:\\[[^\\]]{1,6}\\])?$|" +
+            "^(?:那|嗯|哦)?(?:放心|交给我|算我的|归我)(?:[啊呀了呢吧]|\\[[^\\]]{1,6}\\])*$")
+
+    fun dropStanceOnly(candidates: List<ReplySuggestion>): List<ReplySuggestion> {
+        val kept = candidates.filterNot { stanceOnly.matches(it.text.trim()) }
+        return kept.ifEmpty { candidates }
+    }
+
     fun safe(candidates: List<String>, latestOther: String, allowInvitation: Boolean = false): List<String> {
         val canAnswerInvite = allowInvitation || otherInvited.containsMatchIn(latestOther)
         return candidates.map { it.trim() }.filter { it.isNotEmpty() }

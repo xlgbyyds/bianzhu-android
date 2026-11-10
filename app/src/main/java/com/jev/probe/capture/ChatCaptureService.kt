@@ -2577,7 +2577,7 @@ open class ChatCaptureService : AccessibilityService() {
     private fun wechatPageKey(root: AccessibilityNodeInfo,
                               snapshot: ChatSnapshot? = adapters[PKG_WECHAT]?.extract(root, resources)): String? {
         val region = wechatTitleRegion(root) ?: return null
-        return "${root.windowId}|$region|${snapshot?.messages.orEmpty()}"
+        return wechatPageFingerprint(root.windowId, region.toString(), snapshot?.messages.orEmpty())
     }
 
     /** Resolve locally before sending anything to a model or associating memory. */
@@ -2625,12 +2625,29 @@ open class ChatCaptureService : AccessibilityService() {
         fun stillCurrent() = !destroyed && prefs.enabled && !prefs.overlayHidden &&
             (backgroundRun == null || backfill.isCurrent(backgroundRun)) &&
             wechatTitleGuard.accepts(ticket, rootInActiveWindow?.let { wechatPageKey(it) })
+        // WeChat's safety banner, bubble redraws and the "可按住 转文字" hint all
+        // nudge the message list for a frame. Reporting on the first mismatch made
+        // the same conversation fail twice on a real device (1.4-personal.111).
+        // Wait, resample, and only then decide the page really moved.
+        var changeCheckPosted = false
         fun changed() {
-            if (backgroundRun == null) {
-                onProblem?.invoke("聊天页面已变化", true)
-                if (!quiet) titlePageChanged()
+            if (backgroundRun != null) {
+                if (backfill.isCurrent(backgroundRun)) onProblem?.invoke("页面还在变化，停稳后继续。", true)
+                return
             }
-            else if (backfill.isCurrent(backgroundRun)) onProblem?.invoke("页面还在变化，停稳后继续。", true)
+            if (changeCheckPosted) return
+            changeCheckPosted = true
+            main.postDelayed({
+                if (destroyed) return@postDelayed
+                val live = rootInActiveWindow
+                val now = live?.takeIf { it.packageName?.toString() == PKG_WECHAT }
+                    ?.let { wechatPageKey(it) }
+                if (now != null && now == ticket.page) onReady()
+                else {
+                    onProblem?.invoke("聊天页面已变化", true)
+                    if (!quiet) titlePageChanged()
+                }
+            }, 300L)
         }
         fun failed(message: String, retry: Boolean = false) {
             if (backgroundRun == null) {

@@ -190,4 +190,19 @@ class ReplyPolicyTest {
         assertEquals(listOf("那你这女朋友身份算是有着落了"),
             ReplyPolicy.safeSuggestions(fixed, "").map { it.text })
     }
+
+    @Test fun shortStanceAnnouncementsAreDroppedButRealSentencesSurvive() {
+        val batch = listOf(
+            ReplySuggestion("那我先记下了", "natural", ""),
+            ReplySuggestion("我认了", "follow_detail", ""),
+            ReplySuggestion("这份工作我认了 先干着", "simple", ""),
+            ReplySuggestion("那我陪你聊聊", "simple", ""))
+        assertEquals(listOf("这份工作我认了 先干着", "那我陪你聊聊"),
+            ReplyPolicy.dropStanceOnly(batch).map { it.text })
+    }
+
+    @Test fun anAllStanceBatchIsKeptRatherThanShowingNothing() {
+        val batch = listOf(ReplySuggestion("我明白了", "natural", ""))
+        assertEquals(listOf("我明白了"), ReplyPolicy.dropStanceOnly(batch).map { it.text })
+    }
 }

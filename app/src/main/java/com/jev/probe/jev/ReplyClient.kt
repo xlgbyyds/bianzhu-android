@@ -242,8 +242,8 @@ class ReplyClient(
         // Deterministic output shaping: drop a leading restatement of what she just said
         // before ranking, so prompt non-compliance cannot surface an echo to the user.
         // The person fix is the same idea: "那我这女朋友身份…" must not reach the panel.
-        val stripped = ReplyPolicy.fixSpeakerPerspective(
-            ReplyPolicy.stripKnownEcho(suggestions, recentOther))
+        val stripped = ReplyPolicy.dropStanceOnly(ReplyPolicy.fixSpeakerPerspective(
+            ReplyPolicy.stripKnownEcho(suggestions, recentOther)))
         return ReplyExpressionQuality.preferConcrete(
             ReplyPolicy.withGroundedCurrentFacts(stripped, snapshot), recentOther)
     }
@@ -357,7 +357,10 @@ class ReplyClient(
     }
 
     private fun parseSuggestions(content: String, styles: List<String>, snapshot: ChatSnapshot): List<ReplySuggestion> {
-        ReplyJson.requireUnambiguousKeys(content)
+        val hasReplies = content.contains("\"replies\"")
+        // A conflicting row is dropped alone; the remaining candidates still ship.
+        val ambiguous = if (hasReplies) ReplyJson.ambiguousReplyIndexes(content) else emptySet()
+        if (!hasReplies) ReplyJson.requireUnambiguousKeys(content)
         val structuredObject = content.contains('{')
         val parsed = runCatching {
             val start = content.indexOf('{')
@@ -367,6 +370,7 @@ class ReplyClient(
                 ?: return@runCatching emptyList()
             val usedStyles = HashSet<String>()
             (0 until minOf(rows.length(), styles.size)).mapNotNull { index ->
+                if (index in ambiguous) return@mapNotNull null
                 val row = rows.optJSONObject(index) ?: return@mapNotNull null
                 val text = row.optString("text").trim()
                 if (text.isBlank()) return@mapNotNull null
@@ -381,6 +385,8 @@ class ReplyClient(
             emptyList()
         }
         if (parsed.isNotEmpty()) return parsed.distinctBy { it.text }.sortedBy { styles.indexOf(it.style) }.take(3)
+        if (ambiguous.isNotEmpty())
+            throw IllegalStateException("回复接口返回冲突的重复JSON字段 请重试 本次未展示含义不确定的文本")
         if (structuredObject) throw IllegalStateException("回复接口未返回有效回复条目 请重试")
         return parseCandidates(content).mapIndexed { index, text ->
             val style = styles.getOrElse(index) { styles[index % styles.size] }

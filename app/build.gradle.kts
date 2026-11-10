@@ -22,8 +22,8 @@ android {
         applicationId = "com.jev.personal.chatassistant"
         minSdk = 30
         targetSdk = 35
-        versionCode = 10111
-        versionName = "1.4-personal.111"
+        versionCode = 10112
+        versionName = "1.4-personal.112"
         testInstrumentationRunner = "com.jev.probe.ProfileCheckpointDeviceCheck"
 
         // ML Kit's bundled Chinese recognizer ships native libs for every ABI.
