@@ -124,10 +124,15 @@ class QianshouAdapter : ChatAppAdapter {
     }
 }
 
+/** Role/character social apps that share the RoleChatGuide scene guidance.
+ * 呼叫小狗 and 瓶子说 are separate communities with the same register. */
+internal object RoleSceneApps {
+    val PACKAGES = setOf(PupcallAdapter.PACKAGE, PingziAdapter.PACKAGE)
+}
+
 /** Keep resource-id lookups working on builds whose accessibility provider
  * exposes nodes to tree traversal but returns no matches from Android's id
- * query (also makes adapter tests mirror the real hierarchy reliably). */
-private fun AccessibilityNodeInfo.findByResourceIdCompat(resourceId: String): List<AccessibilityNodeInfo> {
+ * query (also makes adapter tests mirror the real hierarchy reliably). */private fun AccessibilityNodeInfo.findByResourceIdCompat(resourceId: String): List<AccessibilityNodeInfo> {
     val direct = runCatching { findAccessibilityNodeInfosByViewId(resourceId) }.getOrNull()
     if (!direct.isNullOrEmpty()) return direct
     val found = ArrayList<AccessibilityNodeInfo>()

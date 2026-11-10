@@ -81,7 +81,7 @@ open class ChatCaptureService : AccessibilityService() {
 
     /** The personal build also tries the retained WeChat node adapter. */
     private val adapters = listOf(WeChatAdapter(), SoulAdapter(), QianshouAdapter(), QingtengAdapter(), PupcallAdapter(), UkiAdapter(),
-        QQAdapter(), XAdapter(), FeishuAdapter())
+        QQAdapter(), XAdapter(), FeishuAdapter(), PingziAdapter())
         .associateBy { it.pkg }
 
     /** Submit to the worker, ignoring rejection after the service is torn down
@@ -205,6 +205,12 @@ open class ChatCaptureService : AccessibilityService() {
     private fun openConversationTools(mode: String, text: String? = null) {
         if (historyCaptureMode || backfillStarting) { overlay?.toast("请先结束补录，再选择联系人或编辑表达"); return }
         val root = rootInActiveWindow ?: return
+        // Binding a stored contact onto an anonymous stranger would import one
+        // person's memory into someone else's conversation; refuse instead.
+        if (root.packageName?.toString() == PingziAdapter.PACKAGE) {
+            overlay?.showNotice("瓶子说是匿名聊天，不能关联已有联系人；全局相处偏好可在用语解读里设置。")
+            return
+        }
         val target = targetFor(root) ?: run { overlay?.toast("请回到聊天页再操作"); return }
         if (target.title.isNullOrBlank()) {
             if (target.pkg == PKG_WECHAT && wechatTitleRegion(root) != null) {
@@ -571,13 +577,26 @@ open class ChatCaptureService : AccessibilityService() {
         return true
     }
 
-    private fun supportedScopeReadFailure(pkg: String?): String = when (pkg) {
-        PKG_WECHAT -> "微信"
+    /** The bottle app renders an explicit end marker when the peer is gone. */
+    private fun pingziConversationEnded(root: AccessibilityNodeInfo?): Boolean {
+        if (root?.packageName?.toString() != PingziAdapter.PACKAGE) return false
+        var ended = false
+        fun scan(n: AccessibilityNodeInfo) {
+            val t = (n.text?.toString() ?: n.contentDescription?.toString()).orEmpty().trim()
+            if (t.startsWith("对方离开了") || t.startsWith("您断开了连线")) ended = true
+            for (i in 0 until n.childCount) n.getChild(i)?.let(::scan)
+        }
+        root.let(::scan)
+        return ended
+    }
+
+    private fun supportedScopeReadFailure(pkg: String?): String = when (pkg) {        PKG_WECHAT -> "微信"
         "com.tantan.x" -> "牵手"
         "cn.soulapp.android" -> "Soul"
         "cn.neoclub.uki" -> "Uki"
         QingtengAdapter.PACKAGE -> "青藤之恋"
         PupcallAdapter.PACKAGE -> "呼叫小狗"
+        PingziAdapter.PACKAGE -> "瓶子说"
         else -> "当前 App"
     } + "已识别为支持的 App，但聊天页结构暂时没读全。这不代表该 App 不支持；请保持聊天页停稳后重试。"
 
@@ -637,11 +656,15 @@ open class ChatCaptureService : AccessibilityService() {
         overlay?.onChooseContact = { openConversationTools("contacts") }
         overlay?.onRoleChat = {
             val root = rootInActiveWindow
-            val snapshot = root?.takeIf { it.packageName?.toString() == PupcallAdapter.PACKAGE }?.let(::snapshotFor)
-            if (snapshot == null || root == null) overlay?.showNotice("请打开呼叫小狗的单人聊天页后再解读用语。")
+            val rolePkg = root?.packageName?.toString()?.takeIf { it in RoleSceneApps.PACKAGES }
+            val snapshot = rolePkg?.let { p -> root?.takeIf { it.packageName?.toString() == p }?.let(::snapshotFor) }
+            if (snapshot == null || root == null) overlay?.showNotice("请打开呼叫小狗或瓶子说的聊天页后再解读用语。")
             else {
                 val target = targetFor(root, snapshot)
-                val id = contactBinding.contactId(target) ?: KbStore.get(this).findContact(snapshot.title.orEmpty(), PupcallAdapter.PACKAGE)?.id
+                // Anonymous chats never resolve to a stored contact; global preferences apply.
+                val id = if (rolePkg == PingziAdapter.PACKAGE) null
+                else contactBinding.contactId(target)
+                    ?: KbStore.get(this).findContact(snapshot.title.orEmpty(), rolePkg)?.id
                 runCatching {
                     startActivity(Intent(this, com.jev.probe.RoleChatActivity::class.java)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -718,7 +741,8 @@ open class ChatCaptureService : AccessibilityService() {
                     scopeReadRetry.reset("analyze")
                     ocrCaptureManual()
                 } else if (pkg == PKG_WECHAT || pkg == "com.tantan.x" || pkg == "cn.soulapp.android" ||
-                    pkg == "cn.neoclub.uki" || pkg == QingtengAdapter.PACKAGE || pkg == PupcallAdapter.PACKAGE) {
+                    pkg == "cn.neoclub.uki" || pkg == QingtengAdapter.PACKAGE || pkg == PupcallAdapter.PACKAGE ||
+                    pkg == PingziAdapter.PACKAGE) {
                     if (!retrySupportedScopeRead("analyze", pkg, root.windowId) {
                             overlay?.onManualAnalyze?.invoke()
                         }) {
@@ -741,6 +765,12 @@ open class ChatCaptureService : AccessibilityService() {
             }
             val root = rootInActiveWindow
             val pkg = root?.packageName?.toString().orEmpty()
+            // Anonymous one-shot chats have no durable identity to file; a saved
+            // "contact" would only let a wrong memory leak into a stranger's chat.
+            if (pkg == PingziAdapter.PACKAGE) {
+                overlay?.showNotice("瓶子说是匿名聊天，对方离开即断线；存联系人没有意义，本次已跳过。")
+                return@saveContact
+            }
             val target = root?.let { targetFor(it) }
             val chat = root?.let { snapshotFor(it) }
             // WeChat may hide every message node for an accessibility event.
@@ -1346,7 +1376,7 @@ open class ChatCaptureService : AccessibilityService() {
         if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val fg = rootInActiveWindow?.packageName?.toString()
             if (fg != null && fg != packageName && fg != "com.android.systemui")
-                overlay?.setRoleChatAvailable(fg == PupcallAdapter.PACKAGE)
+                overlay?.setRoleChatAvailable(fg in RoleSceneApps.PACKAGES)
             if (prefs.collapseOnAppSwitch && fg != null && fg != "com.android.systemui" && fg != session.target?.pkg)
                 overlay?.collapseForNavigation()
             if (toolsActivityActive && fg == packageName) {
@@ -1403,7 +1433,7 @@ open class ChatCaptureService : AccessibilityService() {
         }
         val root = rootInActiveWindow ?: run { leaveConversation(); overlay?.hide(); return }
         val pkg = root.packageName?.toString()
-        overlay?.setRoleChatAvailable(pkg == PupcallAdapter.PACKAGE)
+        overlay?.setRoleChatAvailable(pkg in RoleSceneApps.PACKAGES)
         if (toolsActivityActive && pkg in setOf(packageName, toolsTarget?.pkg)) return
         val scrollWait = soulScrollSettlesAt - android.os.SystemClock.elapsedRealtime()
         if (pkg == SoulAdapter.PACKAGE && scrollWait > 0) {
@@ -1470,7 +1500,8 @@ open class ChatCaptureService : AccessibilityService() {
             // The bubble's explicit "截屏识别一次" remains available.
             if (prefs.ocrFallback && pkg != PKG_WECHAT &&
                 pkg != "cn.soulapp.android" && pkg != "com.tantan.x" &&
-                pkg != "cn.neoclub.uki" && pkg != QingtengAdapter.PACKAGE && pkg != PupcallAdapter.PACKAGE) {
+                pkg != "cn.neoclub.uki" && pkg != QingtengAdapter.PACKAGE && pkg != PupcallAdapter.PACKAGE &&
+                pkg != PingziAdapter.PACKAGE) {
                 // Gate BEFORE the shot, not after the OCR. Feishu's tree is empty
                 // on every content-changed event, and a successful shot resets the
                 // failure backoff — so without this the caret blinking or an
@@ -1783,7 +1814,8 @@ open class ChatCaptureService : AccessibilityService() {
         val root = rootInActiveWindow
         val pkg = root?.packageName?.toString()
         val observedSnapshot = if (root != null && pkg in setOf(PKG_WECHAT, "com.tantan.x",
-                "cn.soulapp.android", "cn.neoclub.uki", QingtengAdapter.PACKAGE, PupcallAdapter.PACKAGE))
+                "cn.soulapp.android", "cn.neoclub.uki", QingtengAdapter.PACKAGE, PupcallAdapter.PACKAGE,
+                PingziAdapter.PACKAGE))
             snapshotFor(root) else null
         val target = root?.let { targetFor(it, observedSnapshot) }
         val reviewed = target?.let { candidate ->
@@ -1795,6 +1827,12 @@ open class ChatCaptureService : AccessibilityService() {
             "titlePresent=${!snapshot?.title.isNullOrBlank()} target=${target != null} " +
             "titleMatch=${target != null && snapshot != null && target.matchesSnapshot(snapshot)} " +
             "messages=${snapshot?.messages?.size ?: 0}")
+        // Anonymous chats die for good: the editor is replaced by a leave button
+        // and the tree shows the ended marker. Say so instead of a scope-retry hint.
+        if (pkg == PingziAdapter.PACKAGE && pingziConversationEnded(root)) {
+            overlay?.showNotice("对方已离开，这段匿名对话已结束，无法生成${purpose.label}建议。")
+            return
+        }
         when {
             historyCaptureMode -> overlay?.showNotice("正在补录旧消息；请先结束补录，再生成${purpose.label}建议。")
             analyzing || ocrBusy -> {
@@ -2550,7 +2588,11 @@ open class ChatCaptureService : AccessibilityService() {
 
     private fun relationshipForChannel(relationship: String, pkg: String): String =
         relationship + if (pkg == PKG_WECHAT) "\n当前渠道事实：双方已经在微信内聊天；" +
-            "不要再建议加微信、要微信号或加绿泡泡，也不要编造我最近做过的事情。" else ""
+            "不要再建议加微信、要微信号或加绿泡泡，也不要编造我最近做过的事情。"
+        else if (pkg == PingziAdapter.PACKAGE) "\n当前渠道事实：瓶子说匿名聊天，双方匿名且未交换任何联系方式，对方随时可能离开断线；" +
+            "不编造已加微信或已见过面，不催对方答复或追问为什么不回。平台会过滤不雅词，不写露骨性内容。" +
+            "对方横幅的性别年龄段是自述未核实，不当作事实写进回复。"
+        else ""
 
     private fun titlePageChanged() {
         // A late screenshot callback must not resurrect the panel on the home
@@ -2814,7 +2856,8 @@ open class ChatCaptureService : AccessibilityService() {
 
         private const val PKG_WECHAT = "com.tencent.mm"
         private val OPENING_CHAT_PACKAGES = setOf(
-            PKG_WECHAT, "com.tantan.x", "cn.soulapp.android", "cn.neoclub.uki", QingtengAdapter.PACKAGE, PupcallAdapter.PACKAGE
+            PKG_WECHAT, "com.tantan.x", "cn.soulapp.android", "cn.neoclub.uki", QingtengAdapter.PACKAGE, PupcallAdapter.PACKAGE,
+            PingziAdapter.PACKAGE
         )
         private val WECHAT_NON_CHAT_TITLES = setOf("微信", "通讯录", "发现", "我", "搜索")
 

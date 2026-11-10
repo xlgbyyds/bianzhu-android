@@ -153,4 +153,26 @@ class RoleChatGuideTest {
         assertTrue(text.contains("对方偏引导或照顾"))
         assertTrue(text.contains("不能只凭标签把她反过来当小狗"))
     }
+
+    // ------------------------------------------------------------ 瓶子说 (anonymous role-chat app)
+    private val pingziPkg = "com.pingzishuo.www"
+
+    @Test fun pingziSceneKeepsAnonymousChannelRulesAndPressureGuard() {
+        val shot = snapshot("在吗").copy(roleChat = RoleChatMetadata("性别年龄横幅：女生 24-30岁", 24))
+        val scene = RoleChatGuide.guidance(shot, RoleChatPreference(), pingziPkg)
+        assertTrue(scene.contains("仅适用于当前瓶子说匿名对话"))
+        assertTrue(scene.contains("对方随时可能离开"))
+        assertTrue(scene.contains("不把犹豫当默许"))
+        assertFalse(scene.contains("呼叫小狗联系人"))
+        assertEquals(RoleChatGuide.PINGZI_RELATIONSHIP, RoleChatGuide.defaultRelationship(pingziPkg))
+        assertEquals(RoleChatGuide.DEFAULT_RELATIONSHIP, RoleChatGuide.defaultRelationship("com.yixiangweilai.yuebaobao"))
+    }
+
+    @Test fun pingziDisabledPreferenceSpeaksOfBottleAppNotPupcall() {
+        val shot = snapshot("你好").copy(roleChat = RoleChatMetadata(null, null))
+        val scene = RoleChatGuide.guidance(shot, RoleChatPreference(enabled = false), pingziPkg)
+        assertTrue(scene.contains("瓶子说匿名聊天场景"))
+        assertEquals("", RoleChatGuide.guidance(shot.copy(roleChat = null),
+            RoleChatPreference(), pingziPkg))
+    }
 }

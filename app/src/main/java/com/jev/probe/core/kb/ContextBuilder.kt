@@ -106,11 +106,11 @@ object ContextBuilder {
                 .filter { it.side == "me" && it.kind in setOf(com.jev.probe.core.MessageKind.TEXT,
                     com.jev.probe.core.MessageKind.VOICE_TRANSCRIPT) }.map { it.text }.asReversed()
         val voice = com.jev.probe.core.ReplyVoicePolicy.guidance(approved, own, styleComplaint)
-        val roleScene = app == com.jev.probe.capture.PupcallAdapter.PACKAGE && snapshot.roleChat != null
+        val roleScene = app in com.jev.probe.capture.RoleSceneApps.PACKAGES && snapshot.roleChat != null
         val scene = if (roleScene) com.jev.probe.jev.RoleChatGuide.guidance(snapshot,
-            com.jev.probe.core.RoleChatStore(context).load(contact?.id)) else ""
+            com.jev.probe.core.RoleChatStore(context).load(contact?.id), app) else ""
         return ChatContext(contact, trimmedHistory, alwaysOn + trimmedHits, profile, voice, scene,
-            if (roleScene) com.jev.probe.jev.RoleChatGuide.DEFAULT_RELATIONSHIP else null)
+            if (roleScene) com.jev.probe.jev.RoleChatGuide.defaultRelationship(app) else null)
     }
 
     /** Drop only a page at the end, preserving older repeated short messages. */
