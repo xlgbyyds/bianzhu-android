@@ -44,6 +44,32 @@ class ReplyConcreteContentTest {
         assertTrue(result.any { it.text == "感冒了就别熬夜了" })
     }
 
+    @Test fun ordinaryDraftAndRankerCarryTheRealDevicePlainReactionRules() {
+        val prefs = Prefs(RuntimeEnvironment.getApplication(), "plain-reaction-device-audit")
+        var system = ""
+        val client = ReplyClient(prefs) { _, _, body ->
+            system = body.getJSONArray("messages").getJSONObject(0).getString("content")
+            val rows = JSONArray()
+            listOf("natural", "follow_detail", "simple").forEachIndexed { i, style ->
+                rows.put(JSONObject().put("style", style).put("text", listOf(
+                    "行 早点休息", "那先睡 明天再说", "嗯")[i]))
+            }
+            JSONObject().put("choices", JSONArray().put(JSONObject().put("message",
+                JSONObject().put("content", JSONObject().put("replies", rows).toString()))))
+        }
+        client.draft(ChatSnapshot("测试", listOf(Msg("other", "我现在这状态不能熬夜"))), "朋友")
+        assertTrue(system.contains("这点我记住了"))
+        assertTrue(system.contains("真够反差的"))
+        assertTrue(system.contains("只给一个反应也是完整回复"))
+
+        val instructions = JevQuestions.rankQuestion(listOf("行 早点休息",
+            "那今晚就早点睡 别硬撑", "不熬夜这点我记住了"))
+            .getJSONObject("best_reply").getString("instructions")
+        assertTrue(instructions.contains("two to eight characters"))
+        assertTrue(instructions.contains("我认了"))
+        assertTrue(instructions.contains("别硬撑"))
+    }
+
     @Test fun replyAndOpenerUseOneRequestAndKeepConcreteChoiceFirst() {
         val prefs = Prefs(RuntimeEnvironment.getApplication(), "concrete-content")
         for (opener in listOf(false, true)) {

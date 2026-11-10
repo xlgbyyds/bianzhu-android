@@ -111,7 +111,8 @@ class ReplyClient(
             "每条不超过 40 字，口语、自然、像真人在聊天软件里发消息。" +
             // Emotes only belong in ordinary chat; hurt, boundary and style-feedback turns
             // must stay plain, so the mandatory-emote rule is scoped to ORDINARY.
-            (if (turnMode == ReplyTurnPolicy.Mode.ORDINARY) ReplyPolicy.EMOTE_GUIDANCE else "") +
+            (if (turnMode == ReplyTurnPolicy.Mode.ORDINARY)
+                ReplyPolicy.EMOTE_GUIDANCE + ReplyPolicy.PLAIN_REACTION_GUIDANCE else "") +
             ReplyPolicy.WRITING_STYLE + ReplyPolicy.SPEAKER_AND_REFERENCE_GUIDANCE +
             "用户现在选择回复，即使页面显示的是旧消息也可以自然接续话题。" +
             "不要把旧消息说成刚刚收到，不要编造迟回原因（例如当时忙或没兴趣），" +

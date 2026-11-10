@@ -24,6 +24,19 @@ internal object ReplyPolicy {
         "三条里必须有一条带一个微信表情 直接写方括号 例如 [捂脸] [旺柴] [吃瓜] [呲牙] [破涕为笑] " +
             "方括号表情不算标点 不受上面不用标点那条限制 不用自己编方括号里的字 " +
             "表情要贴本轮情绪 她难受或说正事时用 [捂脸] [叹气] 这类 不要用 [旺柴] [吃瓜] 起哄。"
+    // Real-device audit 2026-11-10: 6,888 own lines are 48.3% <=10 chars and contain
+    // stance-announcement phrases in 0.22%. Three live drafts produced two such phrases
+    // ("这反差我认了", "这点我记住了") and pushed every short reaction to rank #3.
+    // Named examples beat another abstract "be natural" rule.
+    const val PLAIN_REACTION_GUIDANCE =
+        "三条里其余两条也不能写成表态或叮嘱 真人几乎不发这些 " +
+            "禁止表态句 我记住了 这点我记住了 我认了 我明白了 放心 交给我 我宁可 算我的 归我 我会注意的 " +
+            "禁止模板叮嘱 别硬撑 注意身体 照顾好自己 多喝热水 记得吃药 " +
+            "也不要把她刚说过的价格数量或原话再复述一遍当开场 然后补一句评价 " +
+            "对照看 她说今天状态不能熬夜 可以回 行 早点休息 或 那先睡 明天再说 " +
+            "不要回 不熬夜这点我记住了 或 那今晚就早点睡 别硬撑 " +
+            "她开玩笑说反差感 可以回 真够反差的 或 哈哈 不要回 这反差我认了 或 这种趣味我宁可少点 " +
+            "只给一个反应也是完整回复 不必每条都解释原因或收个漂亮尾巴。"
     // Placed after context so the model treats profiles/history as evidence, not wording templates.
     const val TURN_WRITING_CHECK =
         "最后核对写法：这句话是我在回应她 还是旁观者在点评她。优先直接说我的选择 意愿 好奇或感受 不替她下结论。" +
