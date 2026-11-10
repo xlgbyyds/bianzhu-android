@@ -47,7 +47,8 @@ object ContextBuilder {
         val title = snapshot.title ?: ""
 
         // 1. Contact — matched only, never created here.
-        val matchedContact = if (selectedContactId != null)
+        val matchedContact = if (app == com.jev.probe.capture.PingziAdapter.PACKAGE) null
+        else if (selectedContactId != null)
             store.contact(selectedContactId)?.takeIf { app in it.apps }
         else store.findContact(title, app)
         // Profiles are deliberately app-scoped. A WeChat history must never be

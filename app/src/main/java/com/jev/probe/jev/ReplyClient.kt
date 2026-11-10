@@ -92,6 +92,7 @@ class ReplyClient(
         val turnMode = ReplyTurnPolicy.mode(snapshot)
         val roleInstruction = RoleChatGuide.replyInstruction(snapshot, ctx?.sceneGuidance.orEmpty(), opener = false)
         val styles = ReplyTurnPolicy.styles(turnMode, if (timeContext.restart) listOf("restart", "resume_topic", "share_now")
+            else if (roleInstruction.startsWith(PingziStyleGuide.MARKER)) listOf("natural", "follow_detail", "simple")
             else ReplyStylePolicy.stylesFor(pageAge, prefs.prefersPlayfulReplies() || roleInstruction.isNotBlank()))
         val feedback = prefs.replyFeedbackGuidance()
         val feedbackInstruction = feedback.takeIf { it.isNotBlank() }?.let { "用户明确给过的口味偏好：$it。" }.orEmpty()
@@ -163,9 +164,11 @@ class ReplyClient(
         val styles = listOf("fresh_opening", "light_callback",
             if (prefs.prefersPlayfulReplies() || roleInstruction.isNotBlank()) "playful" else "simple")
         val hasRoleGreeting = roleInstruction.contains("【呼叫小狗本轮写法】")
+        val hasPingziWriting = roleInstruction.startsWith(PingziStyleGuide.MARKER)
         val sys = "你是中文聊天开场助手。只输出 JSON 对象：{\"replies\":[{\"style\":\"...\",\"text\":\"...\"}]}。" +
             ReplyPolicy.NATURAL_VOICE + ReplyPolicy.LISTENING_AND_CONTINUITY +
-            (if (hasRoleGreeting) "恰好给出三条不同开场，每条使用一个指定 style，不重复。具体按文末呼叫小狗本轮写法处理；有尚未回应的角色招呼时先接招呼，不强制另起普通话题。"
+            (if (hasPingziWriting) "恰好给出三条不同候选，每条使用一个指定 style。按文末瓶子说本轮写法处理，有尚未回应的问题先回答，不强制换话题。"
+            else if (hasRoleGreeting) "恰好给出三条不同开场，每条使用一个指定 style，不重复。具体按文末呼叫小狗本轮写法处理；有尚未回应的角色招呼时先接招呼，不强制另起普通话题。"
             else "恰好给出三条不同开场，每条使用一个指定 style，不重复；fresh_opening 是自然新开场，light_callback 是轻轻回扣旧话题，simple 是普通招呼或直接表达想聊；指定 playful 时有语境才轻逗，没有合适细节就给平实开场。至少一条脱离当前屏幕上已经收尾的旧话题，不能三条换着说同一件事。新开场不能继续盘问过时的安排；回扣只选未过期的共同话题，已经收尾的话题不原样接续。倾诉过的创伤和前任经历不作为破冰素材，除非对方本轮主动继续说。无旧话题时回扣项也用自然破冰，不编造记忆。") +
             "亲近程度必须服从实际关系，陌生人不装熟，不能为了风格标签强行暧昧。" +
             "已经聊热的人用具体共同话题，不默认发送情绪安慰或恋爱宣言。只有哈喽或表情时，不评价她性格，不调侃她回复短，不硬编默契；给一句容易接住的普通话即可。" +
@@ -186,7 +189,8 @@ class ReplyClient(
             "另行提供的对方资料卡文字（自述，非独立核实）：${facts.ifBlank { "无" }}\n" +
             "当前可见聊天：${conversation.ifBlank { "无" }}\n" +
             (if (!hasDialogueEvidence) "没有读到可用聊天正文 不知道是否聊过 light_callback 也给自然破冰 不说上次聊得开心或你之前说过\n" else "") +
-            (if (hasRoleGreeting) "本轮按呼叫小狗的角色式招呼生成不同接法 不编共同经历或现实承诺"
+            (if (hasPingziWriting) "本轮按瓶子说本轮写法生成不同接法 优先回答当前问题 不把陌生人当旧联系人"
+                else if (hasRoleGreeting) "本轮按呼叫小狗的角色式招呼生成不同接法 不编共同经历或现实承诺"
                 else ReplyTurnPolicy.instruction(ReplyTurnPolicy.mode(snapshot), true)) + "\n" +
             "本轮三个 style：${styles.joinToString(", ")}。请按顺序给三条适宜的开场话语。\n" +
             ReplyPolicy.TURN_WRITING_CHECK
