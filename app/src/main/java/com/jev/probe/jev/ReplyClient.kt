@@ -2,6 +2,7 @@ package com.jev.probe.jev
 
 import com.jev.probe.core.Analysis
 import com.jev.probe.core.ChatSnapshot
+import com.jev.probe.core.MessageKind
 import com.jev.probe.core.Prefs
 import com.jev.probe.core.ReplySuggestion
 import com.jev.probe.core.ReplyExpressionQuality
@@ -95,6 +96,7 @@ class ReplyClient(
         val feedback = prefs.replyFeedbackGuidance()
         val feedbackInstruction = feedback.takeIf { it.isNotBlank() }?.let { "用户明确给过的口味偏好：$it。" }.orEmpty()
         val decisionGuidance = ReplyDecisionGuide.prompt(analysis)
+        val lastIsMedia = snapshot.messages.lastOrNull()?.kind == MessageKind.MEDIA_UNKNOWN
         // Ordinary chat is where the "too complete" tell shows up: my own log sends something
         // under 10 characters in about half of all messages. The third slot exists to be that.
         val simpleRule = if (turnMode == ReplyTurnPolicy.Mode.ORDINARY)
@@ -113,7 +115,8 @@ class ReplyClient(
             // must stay plain, so the mandatory-emote rule is scoped to ORDINARY.
             (if (turnMode == ReplyTurnPolicy.Mode.ORDINARY)
                 ReplyPolicy.EMOTE_GUIDANCE + ReplyPolicy.PLAIN_REACTION_GUIDANCE else "") +
-            ReplyPolicy.WRITING_STYLE + ReplyPolicy.SPEAKER_AND_REFERENCE_GUIDANCE +
+            (if (lastIsMedia) ReplyPolicy.MEDIA_LAST_GUIDANCE else "") +
+            ReplyPolicy.WRITING_STYLE + ReplyPolicy.SPEAKER_AND_REFERENCE_GUIDANCE + ReplyPolicy.SPEAKER_PERSON_MAP +
             "用户现在选择回复，即使页面显示的是旧消息也可以自然接续话题。" +
             "不要把旧消息说成刚刚收到，不要编造迟回原因（例如当时忙或没兴趣），" +
             "也不要编造对方当时的心情或我未提供的共同经历。" +
@@ -169,7 +172,7 @@ class ReplyClient(
             "每条不超过35字，像真人发消息，不油腻、不冒犯、不虚构共同经历。" +
             // Cold openers stay plain; only chats that already exist get the emote slot.
             (if (familiar) ReplyPolicy.EMOTE_GUIDANCE else "") +
-            ReplyPolicy.WRITING_STYLE + ReplyPolicy.SPEAKER_AND_REFERENCE_GUIDANCE +
+            ReplyPolicy.WRITING_STYLE + ReplyPolicy.SPEAKER_AND_REFERENCE_GUIDANCE + ReplyPolicy.SPEAKER_PERSON_MAP +
             "没有可靠资料卡事实时不要猜职业、爱好、住址、照片内容或对方心情。" +
             "旧聊天的采集时间不是发送时间，不要说刚刚看到旧消息。" +
             "不能从旧对话推断今天的天气、对方今天上班，或我已经忙完、到家、吃完等当前状态；没有当日明确证据就不写这些断言。" +
@@ -203,7 +206,7 @@ class ReplyClient(
         val system = "你是用户本人的中文聊天代拟助手 只输出合法 JSON 对象 " +
             "{\"replies\":[{\"style\":\"...\",\"text\":\"...\"}]}。" +
             ReplyPolicy.NATURAL_VOICE + ReplyPolicy.LISTENING_AND_CONTINUITY +
-            ReplyPolicy.WRITING_STYLE + ReplyPolicy.SPEAKER_AND_REFERENCE_GUIDANCE +
+            ReplyPolicy.WRITING_STYLE + ReplyPolicy.SPEAKER_AND_REFERENCE_GUIDANCE + ReplyPolicy.SPEAKER_PERSON_MAP +
             "本轮用户明确点击帮我邀约 请执行已完成的 Jev 决策 不沿用普通回复禁止主动邀约的规则。" +
             "INVITE 提出具体活动和可调整的大致安排；REFRAME 回应明确顾虑并换切口；CONFIRM 只落实未定细节。" +
             "CLARIFY 只澄清一个真实缺口；WAIT 正常接当前话题不再邀约；STOP 简短承接拒绝 不继续说服。" +
@@ -238,7 +241,9 @@ class ReplyClient(
         }.takeLast(3).map { it.text }
         // Deterministic output shaping: drop a leading restatement of what she just said
         // before ranking, so prompt non-compliance cannot surface an echo to the user.
-        val stripped = ReplyPolicy.stripKnownEcho(suggestions, recentOther)
+        // The person fix is the same idea: "那我这女朋友身份…" must not reach the panel.
+        val stripped = ReplyPolicy.fixSpeakerPerspective(
+            ReplyPolicy.stripKnownEcho(suggestions, recentOther))
         return ReplyExpressionQuality.preferConcrete(
             ReplyPolicy.withGroundedCurrentFacts(stripped, snapshot), recentOther)
     }

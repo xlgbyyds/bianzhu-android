@@ -168,4 +168,26 @@ class ReplyPolicyTest {
         assertEquals("后来呢[吃瓜]", ReplyPolicy.format("后来呢？[吃瓜]"))
         assertEquals("[破涕为笑] 没事", ReplyPolicy.format("[破涕为笑]，没事。"))
     }
+
+    @Test fun girlfriendStatusOnTheUserIsRewrittenToHer() {
+        // Both phrasings were produced live on 2026-11-10 while the model was
+        // answering "那我有幸成为你的女朋友吗".
+        assertEquals("那你这女朋友身份算转正了",
+            ReplyPolicy.fixSpeakerPerspective("那我这女朋友身份算转正了"))
+        assertEquals("那你这女朋友身份算是有着落了",
+            ReplyPolicy.fixSpeakerPerspective("那我这女朋友身份算是有着落了"))
+        // "我女朋友" without 这 keeps meaning "my girlfriend".
+        assertEquals("我女朋友今天加班", ReplyPolicy.fixSpeakerPerspective("我女朋友今天加班"))
+        assertEquals("我这份工作干腻了", ReplyPolicy.fixSpeakerPerspective("我这份工作干腻了"))
+        assertEquals("", ReplyPolicy.fixSpeakerPerspective(""))
+    }
+
+    @Test fun perspectiveFixSurvivesTheSafePipeline() {
+        val fixed = ReplyPolicy.fixSpeakerPerspective(
+            listOf(ReplySuggestion("那我这女朋友身份算是有着落了", "natural", "依据")))
+        assertEquals("那你这女朋友身份算是有着落了", fixed.single().text)
+        assertEquals("natural", fixed.single().style)
+        assertEquals(listOf("那你这女朋友身份算是有着落了"),
+            ReplyPolicy.safeSuggestions(fixed, "").map { it.text })
+    }
 }

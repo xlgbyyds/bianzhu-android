@@ -1974,10 +1974,10 @@ open class ChatCaptureService : AccessibilityService() {
             overlay?.showNotice("对方末条语音的正文尚未读到。请先转成文字，并让整段转写完整显示在屏幕内后再分析。")
             return
         }
-        if (snapshot.messages.last().kind == MessageKind.MEDIA_UNKNOWN) {
-            overlay?.showNotice("对方最后发的是图片或贴纸，内容未知；这次不根据它猜回复。")
-            return
-        }
+        // A last photo/sticker is still a live turn. We cannot see its content,
+        // but refusing outright made the assistant answer the previous text line
+        // instead (real-device audit 2026-11-10). ReplyClient now drafts against
+        // the media placeholder with a "never invent the picture" rule instead.
         if (analyzing) { overlay?.showProgress("上一轮分析仍在进行…"); return }
         if (destroyed || !prefs.enabled || prefs.overlayHidden) { overlay?.showError("助手未运行，请返回首页检查开关"); return }
         val previous = session.token() ?: run { overlay?.showError("无法确认当前会话，请重试"); return }

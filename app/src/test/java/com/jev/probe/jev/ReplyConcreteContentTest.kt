@@ -70,6 +70,45 @@ class ReplyConcreteContentTest {
         assertTrue(instructions.contains("别硬撑"))
     }
 
+    @Test fun mediaLastMessageDraftsAgainstPlaceholderWithNeverInventRule() {
+        val prefs = Prefs(RuntimeEnvironment.getApplication(), "media-last")
+        var system = ""
+        val client = ReplyClient(prefs) { _, _, body ->
+            system = body.getJSONArray("messages").getJSONObject(0).getString("content")
+            val rows = JSONArray()
+            listOf("natural", "follow_detail", "simple").forEachIndexed { i, style ->
+                rows.put(JSONObject().put("style", style).put("text", listOf("哈哈 这啥", "咋了", "嗯")[i]))
+            }
+            JSONObject().put("choices", JSONArray().put(JSONObject().put("message",
+                JSONObject().put("content", JSONObject().put("replies", rows).toString()))))
+        }
+        val snapshot = ChatSnapshot("测试", listOf(
+            Msg("me", "随时跑路那种"),
+            Msg("other", "这"),
+            Msg("other", "", MessageKind.MEDIA_UNKNOWN)))
+        val result = client.draft(snapshot, "朋友")
+        assertTrue(system.contains("看不到具体内容"))
+        assertTrue(system.contains("不描述 不猜测"))
+        assertTrue(result.isNotEmpty())
+    }
+
+    @Test fun speakerPersonMapIsInjectedInEveryReplyPath() {
+        val prefs = Prefs(RuntimeEnvironment.getApplication(), "person-map")
+        var system = ""
+        val client = ReplyClient(prefs) { _, _, body ->
+            system = body.getJSONArray("messages").getJSONObject(0).getString("content")
+            val rows = JSONArray()
+            listOf("natural", "follow_detail", "simple").forEachIndexed { i, style ->
+                rows.put(JSONObject().put("style", style).put("text", "哈哈$i"))
+            }
+            JSONObject().put("choices", JSONArray().put(JSONObject().put("message",
+                JSONObject().put("content", JSONObject().put("replies", rows).toString()))))
+        }
+        client.draft(ChatSnapshot("测试", listOf(Msg("other", "那我有幸成为你的女朋友吗"))), "朋友")
+        assertTrue(system.contains("我 只能是用户"))
+        assertTrue(system.contains("你这女朋友身份算转正了"))
+    }
+
     @Test fun replyAndOpenerUseOneRequestAndKeepConcreteChoiceFirst() {
         val prefs = Prefs(RuntimeEnvironment.getApplication(), "concrete-content")
         for (opener in listOf(false, true)) {

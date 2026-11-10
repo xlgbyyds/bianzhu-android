@@ -62,6 +62,21 @@ internal object ReplyPolicy {
         "关系档案含双方的历史，不等于对方的资料卡；来源或指代不明时换个自然开场，不补造承诺。" +
         "引用和转述不等于对方此刻对我的表达，不能把故事人物的话当成本次邀约或示爱。" +
         "人物指代不确定时省略称呼，直接回应已确认的具体细节。"
+    // Real-device audit 2026-11-10: a live draft wrote "那我这女朋友身份算转正了",
+    // putting her girlfriend status onto the user. Pin the person mapping once,
+    // with that exact counter-example, instead of hoping the model infers it.
+    const val SPEAKER_PERSON_MAP =
+        "每条都是用户本人当场发给对方的话 我 只能是用户 你 只能是对方 " +
+        "不替对方说话 不把对方的身份 感受或动作写到用户身上 " +
+        "例如她问 那我有幸成为你的女朋友吗 可以回 你这女朋友身份算转正了 " +
+        "不能回 我这女朋友身份算转正了。"
+    // Last message is a photo/sticker the model cannot see. Real-device audit
+    // 2026-11-10: without this rule drafts either answered the previous text or
+    // invented what the picture showed.
+    const val MEDIA_LAST_GUIDANCE =
+        "对方最后发的是图片或表情包 你看不到具体内容 " +
+        "可以只回应她的情绪 比如 哈哈 这啥 或顺着当前话题自然接一句 " +
+        "不描述 不猜测 不评价图片内容 不复述前面的文字 不假装看到了图。"
     private val punctuation = Regex("[\\p{P}\\s]+")
     private val courtesy = Regex("^(谢谢|感谢|不客气|不用谢|不用客气|请问|您好|" +
         "你好(?=$|[\\s\\p{P}呀啊])|打扰了|辛苦了|辛苦你|祝你)")
@@ -146,6 +161,19 @@ internal object ReplyPolicy {
 
     fun stripKnownEcho(candidates: List<ReplySuggestion>, recentOther: List<String>): List<ReplySuggestion> =
         candidates.map { it.copy(text = stripKnownEcho(it.text, recentOther)) }
+
+    // Real-device audit 2026-11-10 (twice, two separate runs): drafts wrote
+    // "那我这女朋友身份算转正了 / 算是有着落了" — her status put on the user. Giving the
+    // model a negative example in the prompt was not enough, so rewrite this one
+    // template locally. "我女朋友" without 这 still means "my girlfriend" and stays.
+    private val ownIdentityClaim = Regex("我(?:这|这个|这份)(女朋友|男朋友|对象)身份")
+
+    fun fixSpeakerPerspective(text: String): String =
+        if (text.isBlank()) text
+        else ownIdentityClaim.replace(text) { "你这" + it.groupValues[1] + "身份" }
+
+    fun fixSpeakerPerspective(candidates: List<ReplySuggestion>): List<ReplySuggestion> =
+        candidates.map { it.copy(text = fixSpeakerPerspective(it.text)) }
 
     fun safe(candidates: List<String>, latestOther: String, allowInvitation: Boolean = false): List<String> {
         val canAnswerInvite = allowInvitation || otherInvited.containsMatchIn(latestOther)

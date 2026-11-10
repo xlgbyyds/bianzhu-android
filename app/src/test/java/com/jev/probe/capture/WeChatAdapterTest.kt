@@ -205,6 +205,37 @@ class WeChatAdapterTest {
         assertTrue(WeChatAdapter().extract(root, res)!!.messages.isEmpty())
     }
 
+    @Test fun imageOnlyRowBecomesAMediaMessageInOrder() {
+        val snapshot = WeChatAdapter().extract(page(
+            row("other", "看到没", 300, .12, .35),
+            imageRow("other", 450, 620),
+            row("me", "哈哈", 700, .65, .88)), res)!!
+
+        assertEquals(listOf("other", "other", "me"), snapshot.messages.map { it.side })
+        assertEquals(listOf(MessageKind.TEXT, MessageKind.MEDIA_UNKNOWN, MessageKind.TEXT),
+            snapshot.messages.map { it.kind })
+        assertEquals("", snapshot.messages[1].text)
+    }
+
+    @Test fun lastMessageStickerKeepsTheOtherSideAsLatestSpeaker() {
+        val snapshot = WeChatAdapter().extract(page(
+            row("me", "随时跑路那种", 300, .65, .88),
+            row("other", "这", 450, .12, .35),
+            imageRow("other", 550, 760)), res)!!
+
+        assertEquals("other", snapshot.latestFrom)
+        assertEquals(MessageKind.MEDIA_UNKNOWN, snapshot.messages.last().kind)
+    }
+
+    @Test fun ownStickerStillCountsAsMyMessageForTheSkipGuard() {
+        val snapshot = WeChatAdapter().extract(page(
+            row("other", "好", 300, .12, .35),
+            imageRow("me", 450, 620)), res)!!
+
+        assertEquals("me", snapshot.latestFrom)
+        assertEquals(MessageKind.MEDIA_UNKNOWN, snapshot.messages.last().kind)
+    }
+
     private fun page(vararg rows: AccessibilityNodeInfo): AccessibilityNodeInfo = node(null, null, 0, 1600).apply {
         shadowOf(this).addChild(node("gp", null, 40, 120))
         rows.forEach { shadowOf(this).addChild(it) }
@@ -215,6 +246,18 @@ class WeChatAdapterTest {
 
     private fun row(side: String?, text: String, top: Int, left: Double, right: Double): AccessibilityNodeInfo =
         messageRow(side, node("bkl", text, top, top + 90, left, right))
+
+    /** A photo/sticker row: own avatar, but no readable bkl text anywhere inside. */
+    private fun imageRow(side: String?, top: Int, bottom: Int): AccessibilityNodeInfo =
+        node("bkj", null, top, bottom, 0.0, 1.0).apply {
+            side?.let { owner ->
+                val avatarLeft = if (owner == "me") width * 86 / 100 else width * 2 / 100
+                val avatarRight = if (owner == "me") width * 98 / 100 else width * 14 / 100
+                shadowOf(this).addChild(node("bk1", null, top, bottom, avatarLeft.toDouble() / width,
+                    avatarRight.toDouble() / width))
+            }
+            shadowOf(this).addChild(node("bkg", null, top + 20, bottom - 20, .2, .8))
+        }
 
     private fun messageRow(side: String?, bubble: AccessibilityNodeInfo): AccessibilityNodeInfo {
         val box = Rect().also { bubble.getBoundsInScreen(it) }

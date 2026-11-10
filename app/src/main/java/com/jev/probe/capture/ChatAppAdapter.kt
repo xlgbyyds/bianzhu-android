@@ -335,7 +335,8 @@ class WeChatAdapter : ChatAppAdapter {
             val rowNode: AccessibilityNodeInfo,
             val rowBounds: Rect,
             val side: String,
-            val bubbles: MutableList<BubbleText>
+            val bubbles: MutableList<BubbleText>,
+            var registered: Boolean = false
         )
         data class Visit(val node: AccessibilityNodeInfo, val row: AccessibilityNodeInfo?, val side: String)
         val bubbles = ArrayList<RowMessage>()
@@ -349,6 +350,23 @@ class WeChatAdapter : ChatAppAdapter {
         val stack = ArrayDeque<Visit>()
         stack.addLast(Visit(root, null, "unknown"))
         var guard = 0
+        // Register every message row that has its own avatar. Photos, stickers
+        // and transfer cards carry no readable bkl text, so without this they
+        // vanish from the snapshot: a last-message sticker would silently fall
+        // back to the previous text line and the "media is unknown" guard in
+        // ChatCaptureService would never fire.
+        fun registerRow(rowNode: AccessibilityNodeInfo, rowBounds: Rect, rowSide: String): RowMessage {
+            val rowKey = "${rowBounds.left}:${rowBounds.top}:${rowBounds.right}:${rowBounds.bottom}"
+            val messageRow = rowsByKey.getOrPut(rowKey) {
+                RowMessage(rowNode, Rect(rowBounds), rowSide, mutableListOf())
+            }
+            if (!messageRow.registered) {
+                messageRow.registered = true
+                bubbles.add(messageRow)
+                firstBubbleTop = minOf(firstBubbleTop, rowBounds.top)
+            }
+            return messageRow
+        }
         while (stack.isNotEmpty() && guard < 5000) {
             guard++
             val visit = stack.removeLast()
@@ -364,7 +382,12 @@ class WeChatAdapter : ChatAppAdapter {
             val ownsMessageRow = id == ROW_ID && (rowSide != "unknown" || visit.row == null)
             val row = if (ownsMessageRow) node else visit.row
             val side = if (ownsMessageRow) rowSide else visit.side
-            if (id == ROW_ID) isChat = true
+            if (id == ROW_ID) {
+                isChat = true
+                if (ownsMessageRow && side != "unknown" && node.isVisibleToUser && !bounds.isEmpty) {
+                    registerRow(node, bounds, side)
+                }
+            }
             if (node.isVisibleToUser && !bounds.isEmpty) {
                 if (id == "com.tencent.mm:id/gp" && bounds.bottom < res.displayMetrics.heightPixels * 0.14)
                     viewportTop = maxOf(viewportTop, bounds.bottom)
@@ -380,16 +403,8 @@ class WeChatAdapter : ChatAppAdapter {
                 isChat = true
                 if (!text.isNullOrBlank() && node.isVisibleToUser && bounds.height() >= 8 && row != null) {
                     val rowBounds = Rect().also { row.getBoundsInScreen(it) }
-                    val rowKey = "${rowBounds.left}:${rowBounds.top}:${rowBounds.right}:${rowBounds.bottom}"
-                    val messageRow = rowsByKey.getOrPut(rowKey) {
-                        RowMessage(row, Rect(rowBounds), side, mutableListOf())
-                    }
-                    val firstInRow = messageRow.bubbles.isEmpty()
+                    val messageRow = registerRow(row, rowBounds, side)
                     messageRow.bubbles.add(BubbleText(Rect(bounds), text))
-                    if (firstInRow) {
-                        bubbles.add(messageRow)
-                        firstBubbleTop = minOf(firstBubbleTop, rowBounds.top)
-                    }
                 }
                 // A nested quote is part of this bubble, not another message.
                 continue
@@ -410,6 +425,13 @@ class WeChatAdapter : ChatAppAdapter {
         val voiceRegions = ArrayList<VoiceTranscriptRect>()
         val msgs = bubbles.mapIndexed { index, message ->
             val time = qianshouTimeForRow(message.rowBounds.top, timeMarkers)
+            // A registered row with no readable text bubble is a photo, sticker,
+            // card or any other media we cannot inspect: keep it visible as a
+            // placeholder instead of pretending the turn never happened.
+            if (message.bubbles.isEmpty()) {
+                return@mapIndexed Msg(message.side, "", MessageKind.MEDIA_UNKNOWN,
+                    visibleTime = time, timeConfidence = if (time == null) "unknown" else "partial")
+            }
             val texts = message.bubbles.sortedBy { it.bounds.top }.map { it.text.trim() }.toMutableList()
             if (texts.any(WECHAT_VOICE_DURATION::containsMatchIn)) {
                 val rowNodes = ArrayDeque<AccessibilityNodeInfo>()
